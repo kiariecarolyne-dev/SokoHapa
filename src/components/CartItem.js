@@ -1,15 +1,23 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../utils/theme';
 import ImagePlaceholder from './ImagePlaceholder';
+import { getMasterProductById, resolveProductImage } from '../utils/productCatalogue';
 import { formatKES } from '../utils/format';
 
 export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
   const itemTotal = item.pricePerKg * item.quantity;
 
+  const masterProduct = item.masterProductId ? getMasterProductById(item.masterProductId) : null;
+  const image = masterProduct ? resolveProductImage(masterProduct) : null;
+
   return (
     <View style={styles.card}>
-      <ImagePlaceholder icon="basket-outline" iconSize={26} style={styles.image} />
+      {image ? (
+        <Image source={image} style={styles.image} resizeMode="cover" />
+      ) : (
+        <ImagePlaceholder icon="basket-outline" iconSize={26} style={styles.image} />
+      )}
       <View style={styles.body}>
         <View style={styles.topRow}>
           <View style={styles.titleWrap}>

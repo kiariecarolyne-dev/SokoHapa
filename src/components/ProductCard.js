@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing, typography } from '../utils/theme';
 import ImagePlaceholder from './ImagePlaceholder';
+import { getMasterProductById, resolveProductImage } from '../utils/productCatalogue';
 import { formatKES } from '../utils/format';
 
 export default function ProductCard({ product, onAddToCart }) {
@@ -10,12 +11,19 @@ export default function ProductCard({ product, onAddToCart }) {
 
   const unavailable = !product.available || product.availableQuantity <= 0;
 
+  const masterProduct = product.masterProductId ? getMasterProductById(product.masterProductId) : null;
+  const image = masterProduct ? resolveProductImage(masterProduct) : null;
+
   const decrement = () => setQuantity((q) => Math.max(1, q - 1));
   const increment = () => setQuantity((q) => Math.min(product.availableQuantity || 1, q + 1));
 
   return (
     <View style={styles.card}>
-      <ImagePlaceholder icon="basket-outline" iconSize={34} style={styles.image} />
+      {image ? (
+        <Image source={image} style={styles.image} resizeMode="cover" />
+      ) : (
+        <ImagePlaceholder icon="basket-outline" iconSize={34} style={styles.image} />
+      )}
       <View style={styles.body}>
         <View style={styles.topRow}>
           <View style={styles.titleWrap}>

@@ -5,7 +5,7 @@ import ImagePlaceholder from '../../components/ImagePlaceholder';
 import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { MASTER_PRODUCTS } from '../../services/masterProducts';
-import { getActiveCategories, getUnitLabel, resolveProductImage } from '../../utils/productCatalogue';
+import { getActiveCategories, getMasterProductById, getUnitLabel, resolveProductImage } from '../../utils/productCatalogue';
 import { getStoreById } from '../../services/mockData';
 import { vendorCanManageStore } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
@@ -72,6 +72,8 @@ export default function VendorProductsScreen({ navigation }) {
 
   const renderStoreProduct = (item) => {
     const status = item.available ? 'Available' : 'Unavailable';
+    const masterProduct = item.masterProductId ? getMasterProductById(item.masterProductId) : null;
+    const image = masterProduct ? resolveProductImage(masterProduct) : null;
     return (
       <TouchableOpacity
         key={item.id}
@@ -79,7 +81,11 @@ export default function VendorProductsScreen({ navigation }) {
         style={styles.card}
         onPress={() => navigation.navigate('EditProduct', { productId: item.id })}
       >
-        <ImagePlaceholder icon="basket-outline" iconSize={28} style={styles.image} />
+        {image ? (
+          <Image source={image} style={styles.image} resizeMode="cover" />
+        ) : (
+          <ImagePlaceholder icon="basket-outline" iconSize={28} style={styles.image} />
+        )}
         <View style={styles.body}>
           <Text style={styles.name}>{item.name}</Text>
           <Text style={styles.category}>{item.category}</Text>

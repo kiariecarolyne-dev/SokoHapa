@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImagePlaceholder from '../../components/ImagePlaceholder';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useCart } from '../../context/CartContext';
 import { getProductById } from '../../services/mockData';
+import { getMasterProductById, resolveProductImage } from '../../utils/productCatalogue';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
@@ -25,6 +26,9 @@ export default function ProductDetailsScreen({ navigation, route }) {
   const { product, store } = result;
   const unavailable = !product.available || product.availableQuantity <= 0;
 
+  const masterProduct = product.masterProductId ? getMasterProductById(product.masterProductId) : null;
+  const productImage = masterProduct ? resolveProductImage(masterProduct) : null;
+
   const handleAdd = () => {
     if (unavailable) return;
     addItem(product, quantity);
@@ -38,7 +42,11 @@ export default function ProductDetailsScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <ImagePlaceholder icon="basket-outline" iconSize={70} style={styles.image} />
+        {productImage ? (
+          <Image source={productImage} style={styles.image} resizeMode="cover" />
+        ) : (
+          <ImagePlaceholder icon="basket-outline" iconSize={70} style={styles.image} />
+        )}
 
         <View style={styles.body}>
           <Text style={styles.name}>{product.name}</Text>
