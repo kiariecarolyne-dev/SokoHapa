@@ -22,18 +22,21 @@ export default function ProductCard({ product, onAddToCart }) {
       {image ? (
         <Image source={image} style={styles.image} resizeMode="cover" />
       ) : (
-        <ImagePlaceholder icon="basket-outline" iconSize={34} style={styles.image} />
+        <ImagePlaceholder icon="basket-outline" iconSize={26} style={styles.image} />
       )}
       <View style={styles.body}>
-        <View style={styles.topRow}>
-          <View style={styles.titleWrap}>
-            <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
-            <Text style={styles.category}>{product.category}</Text>
-            <Text style={styles.price}>{formatKES(product.pricePerKg)} / kg</Text>
-            <Text style={styles.availability}>
-              {unavailable ? 'Currently unavailable' : `${product.availableQuantity} kg available`}
-            </Text>
-          </View>
+        <View style={styles.titleRow}>
+          <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
+          <Text style={styles.price}>{formatKES(product.pricePerKg)} / kg</Text>
+        </View>
+        {masterProduct ? (
+          <Text style={styles.swahili} numberOfLines={1}>{masterProduct.nameSwahili}</Text>
+        ) : null}
+        <View style={styles.metaRow}>
+          <Text style={styles.category} numberOfLines={1}>{product.category}</Text>
+          <Text style={[styles.availability, unavailable && styles.availabilityOff]} numberOfLines={1}>
+            {unavailable ? 'Currently unavailable' : `${product.availableQuantity} kg available`}
+          </Text>
         </View>
 
         <View style={styles.actionRow}>
@@ -63,7 +66,7 @@ export default function ProductCard({ product, onAddToCart }) {
             style={[styles.addBtn, unavailable && styles.addBtnDisabled]}
           >
             <Ionicons name="cart-outline" size={16} color={colors.white} />
-            <Text style={styles.addText}>Add to Cart</Text>
+            <Text style={styles.addText} numberOfLines={1}>Add to Cart</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -73,51 +76,69 @@ export default function ProductCard({ product, onAddToCart }) {
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    overflow: 'hidden',
+    padding: spacing.sm,
     marginBottom: spacing.md,
     ...shadow,
   },
   image: {
-    width: '100%',
-    height: 120,
-    borderRadius: 0,
+    width: 72,
+    height: 72,
+    borderRadius: radius.md,
   },
   body: {
-    padding: spacing.md,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  titleWrap: {
     flex: 1,
+    marginLeft: spacing.sm,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   name: {
+    flex: 1,
     ...typography.subtitle,
-    fontSize: 17,
-  },
-  category: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: 2,
+    fontSize: 15,
   },
   price: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: colors.primaryDark,
-    marginTop: spacing.sm,
+    flexShrink: 0,
+  },
+  swahili: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  category: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: colors.textMuted,
   },
   availability: {
     ...typography.bodySmall,
-    marginTop: 2,
+    flexShrink: 0,
+  },
+  availabilityOff: {
+    color: colors.danger,
+    fontWeight: '600',
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   stepper: {
     flexDirection: 'row',
@@ -127,32 +148,37 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   stepBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    minWidth: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
   },
   stepDisabled: {
     opacity: 0.4,
   },
   stepValue: {
-    minWidth: 52,
+    minWidth: 44,
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },
   addBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.primary,
     borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     marginLeft: spacing.sm,
   },
   addBtnDisabled: {
     backgroundColor: colors.textMuted,
   },
   addText: {
+    flexShrink: 1,
     color: colors.white,
     fontSize: 13,
     fontWeight: '700',

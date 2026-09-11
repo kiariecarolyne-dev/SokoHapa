@@ -45,7 +45,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
         {productImage ? (
           <Image source={productImage} style={styles.image} resizeMode="cover" />
         ) : (
-          <ImagePlaceholder icon="basket-outline" iconSize={70} style={styles.image} />
+          <ImagePlaceholder icon="basket-outline" iconSize={52} style={styles.image} />
         )}
 
         <View style={styles.body}>
@@ -125,8 +125,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   image: {
-    height: 220,
-    borderRadius: 0,
+    height: 180,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    borderRadius: radius.lg,
   },
   body: {
     padding: spacing.lg,
