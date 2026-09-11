@@ -1,12 +1,15 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import StatusBadge from '../../components/StatusBadge';
 import { getVendorOrderById } from '../../services/mockData';
+import { updateVendorOrderStatus } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
 export default function VendorOrderDetailsScreen({ navigation, route }) {
   const orderId = route?.params?.orderId;
+  const [, forceRender] = useState(0);
   const order = getVendorOrderById(orderId);
 
   if (!order) {
@@ -16,6 +19,39 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
       </View>
     );
   }
+
+  const applyStatus = (updates, message) => {
+    const updated = updateVendorOrderStatus(order.id, updates);
+    if (!updated) {
+      Alert.alert(
+        'Not Available',
+        'Updating order status is only available in TEST MODE (development).'
+      );
+      return;
+    }
+    forceRender((n) => n + 1);
+    Alert.alert('Order Updated', message);
+  };
+
+  const handleAccept = () =>
+    applyStatus(
+      { status: 'Preparing', deliveryStatus: 'Preparing Order' },
+      `Order ${order.orderNumber} accepted and set to preparing.`
+    );
+
+  const handleMarkPreparing = () =>
+    applyStatus(
+      { status: 'Preparing', deliveryStatus: 'Preparing Order' },
+      `Order ${order.orderNumber} marked as preparing.`
+    );
+
+  const handleMarkReady = () =>
+    applyStatus(
+      { status: 'Ready for Pickup', deliveryStatus: 'Parcel Ready' },
+      `Order ${order.orderNumber} marked ready for pickup.`
+    );
+
+  const canPrepare = order.status === 'New' || order.status === 'Preparing';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
@@ -57,6 +93,12 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
           <Text style={styles.sectionTitle}>Delivery Status</Text>
           <StatusBadge label={order.deliveryStatus} />
         </View>
+        {order.assignedDeliveryPerson ? (
+          <View style={styles.statusBlock}>
+            <Text style={styles.sectionTitle}>Delivery Person</Text>
+            <Text style={styles.itemName}>{order.assignedDeliveryPerson}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.actions}>
@@ -64,27 +106,29 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
           <PrimaryButtonTile
             icon="checkmark-circle"
             title="Accept Order"
-            onPress={() => {}}
+            onPress={handleAccept}
           />
         ) : null}
-        {order.status !== 'Completed' ? (
-          <>
-            <PrimaryButtonTile
-              icon="time-outline"
-              title="Mark Preparing"
-              onPress={() => {}}
-            />
-            <PrimaryButtonTile
-              icon="cube-outline"
-              title="Mark Ready for Pickup"
-              onPress={() => {}}
-            />
-            <PrimaryButtonTile
-              icon="car-sport-outline"
-              title="Choose Delivery Person"
-              onPress={() => navigation.navigate('ChooseDelivery', { orderId: order.id })}
-            />
-          </>
+        {canPrepare ? (
+          <PrimaryButtonTile
+            icon="time-outline"
+            title="Mark Preparing"
+            onPress={handleMarkPreparing}
+          />
+        ) : null}
+        {canPrepare ? (
+          <PrimaryButtonTile
+            icon="cube-outline"
+            title="Mark Ready for Pickup"
+            onPress={handleMarkReady}
+          />
+        ) : null}
+        {order.status === 'Ready for Pickup' ? (
+          <PrimaryButtonTile
+            icon="car-sport-outline"
+            title="Choose Delivery Person"
+            onPress={() => navigation.navigate('ChooseDelivery', { orderId: order.id })}
+          />
         ) : null}
       </View>
     </ScrollView>

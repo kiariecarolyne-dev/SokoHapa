@@ -33,6 +33,18 @@ const TEST_MODE_ACTIVE = true;
 export const TEST_MODE =
   (typeof __DEV__ === 'boolean' && __DEV__) && TEST_MODE_ACTIVE;
 
+import {
+  buildTestOrderFromCart,
+  submitTestOrder,
+  updateOrderRecord,
+  addTestDeliveryRequest,
+  setActiveDeliveryFromOrder,
+  addDeliveryHistoryRecord,
+  getOrderByOrderNumber,
+  activeDelivery,
+  deliveryRequests,
+} from '../services/mockData';
+
 // True when the vendor's Firestore profile shows an active subscription.
 // The Firestore profile is the source of truth; this helper is intentionally
 // not altered by TEST_MODE.
@@ -67,4 +79,79 @@ export function vendorCanManageStore(profile) {
     return true;
   }
   return isVendorSubscribed(profile);
+}
+
+// ---- TEST_MODE order & delivery workflow helpers ----
+// Every helper below is a no-op (returns null) unless TEST_MODE is active, so a
+// production / release build (or TEST_MODE_ACTIVE = false) never creates fake
+// orders, fake payments or fake delivery activity.
+
+// Creates a test order from the current cart and makes it visible to BOTH the
+// buyer and vendor order lists. Returns the new order (or null when TEST_MODE).
+export function placeTestOrder(input) {
+  if (!TEST_MODE) return null;
+  const order = buildTestOrderFromCart(input);
+  return submitTestOrder(order);
+}
+
+// Applies status updates to an order shared by the buyer and vendor lists.
+export function updateVendorOrderStatus(orderId, updates) {
+  if (!TEST_MODE) return null;
+  return updateOrderRecord(orderId, updates);
+}
+
+// Assigns a delivery person to an order, moves it to 'Out for Delivery' and
+// creates an incoming delivery request for the rider.
+export function assignTestDeliveryPerson(orderId, person) {
+  if (!TEST_MODE) return null;
+  const order = updateOrderRecord(orderId, {
+    status: 'Out for Delivery',
+    deliveryStatus: 'With Rider',
+    assignedDeliveryPerson: person ? person.fullName : 'Unassigned',
+  });
+  if (!order) {
+    return null;
+  }
+  addTestDeliveryRequest(order);
+  return order;
+}
+
+// Accepts a vendor's delivery request: starts the active delivery for the
+// rider and keeps the order's delivery status in sync.
+export function acceptTestDeliveryRequest(requestId) {
+  if (!TEST_MODE) return null;
+  const index = deliveryRequests.findIndex((request) => request.id === requestId);
+  if (index < 0) {
+    return null;
+  }
+  const request = deliveryRequests[index];
+  const order = getOrderByOrderNumber(request.orderNumber);
+  if (!order) {
+    return null;
+  }
+  deliveryRequests.splice(index, 1);
+  updateOrderRecord(order.id, { deliveryStatus: 'With Rider' });
+  setActiveDeliveryFromOrder(order);
+  return order;
+}
+
+// Marks a test delivery completed: updates the order to Completed/Delivered
+// for buyer + vendor, records it in delivery history and clears the active
+// delivery.
+export function completeTestDelivery(orderNumber) {
+  if (!TEST_MODE) return null;
+  const order = getOrderByOrderNumber(orderNumber);
+  if (order) {
+    updateOrderRecord(order.id, { status: 'Completed', deliveryStatus: 'Delivered' });
+    addDeliveryHistoryRecord(order);
+  }
+  Object.assign(activeDelivery, {
+    orderNumber: '',
+    vendorStore: '',
+    pickupLocation: '',
+    deliveryLocation: '',
+    buyerPhone: '',
+    parcelStatus: 'Pending Pickup',
+  });
+  return order;
 }

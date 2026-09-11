@@ -509,3 +509,137 @@ export const currentDeliveryProfile = {
   plateNumber: 'KDK 123A',
   availability: 'Available',
 };
+
+// ---- Prototype TEST_MODE order/delivery helpers (dev testing) ----
+// These mutate the in-memory prototype `buyerOrders` / `vendorOrders`
+// collections so the whole Buyer -> Cart -> Checkout -> Vendor -> Delivery
+// workflow can be exercised in development. They are only called from
+// src/utils/testMode.js and never write to Firestore or the master catalogue.
+
+let testOrderSeq = 0;
+
+function buildTestOrderFromCart({
+  cartItems,
+  subtotal,
+  deliveryFee,
+  total,
+  buyerName = currentUserProfile.fullName,
+  buyerPhone = currentUserProfile.phone,
+}) {
+  testOrderSeq += 1;
+  const orderNumber = `SH-${1100 + testOrderSeq}`;
+  const firstCartItem = cartItems[0] || {};
+  const firstLookup = getProductById(firstCartItem.id);
+  const store = firstLookup ? firstLookup.store : getStoreById('store-1');
+  const vendorStoreName = store ? store.name : currentVendor.storeName;
+  const pickupLocation = store ? store.location : currentVendor.location;
+
+  const items = cartItems.map((cartItem) => {
+    const resolved = getProductById(cartItem.id);
+    const referencedMasterId =
+      resolved ? (resolved.product.masterProductId ?? null) : null;
+    return {
+      id: cartItem.id,
+      name: cartItem.name,
+      quantity: cartItem.quantity,
+      pricePerKg: cartItem.pricePerKg,
+      subtotal: cartItem.pricePerKg * cartItem.quantity,
+      masterProductId: cartItem.masterProductId ?? referencedMasterId,
+      unit: cartItem.unit || 'kg',
+    };
+  });
+
+  const now = new Date();
+  const hh = now.getHours().toString().padStart(2, '0');
+  const mm = now.getMinutes().toString().padStart(2, '0');
+
+  return {
+    id: `test-order-${now.getTime()}-${testOrderSeq}`,
+    orderNumber,
+    buyerName,
+    buyerPhone,
+    vendorName: vendorStoreName,
+    items,
+    subtotal,
+    deliveryFee,
+    total,
+    status: 'New',
+    paymentStatus: 'Test (No Payment)',
+    deliveryStatus: 'Awaiting Accept',
+    isTestOrder: true,
+    createdAt: `Now, ${hh}:${mm}`,
+    delivery: {
+      pickupLocation,
+      deliveryLocation: 'Buyer delivery address (placeholder)',
+      distanceKm: 8,
+      deliveryFee,
+    },
+  };
+}
+
+function submitTestOrder(order) {
+  buyerOrders.unshift(order);
+  vendorOrders.unshift(order);
+  return order;
+}
+
+function updateOrderRecord(orderId, updates) {
+  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
+  if (order) {
+    Object.assign(order, updates);
+  }
+  return order;
+}
+
+function addTestDeliveryRequest(order) {
+  deliveryRequests.unshift({
+    id: `dr-test-${order.orderNumber}`,
+    orderNumber: order.orderNumber,
+    vendorStore: order.vendorName,
+    pickupLocation: order.delivery.pickupLocation,
+    deliveryLocation: order.delivery.deliveryLocation,
+    distanceKm: order.delivery.distanceKm,
+    deliveryFee: order.delivery.deliveryFee,
+  });
+}
+
+function setActiveDeliveryFromOrder(order) {
+  Object.assign(activeDelivery, {
+    orderNumber: order.orderNumber,
+    vendorStore: order.vendorName,
+    pickupLocation: order.delivery.pickupLocation,
+    deliveryLocation: order.delivery.deliveryLocation,
+    buyerPhone: order.buyerPhone,
+    parcelStatus: 'Pending Pickup',
+  });
+  return activeDelivery;
+}
+
+function addDeliveryHistoryRecord(order) {
+  deliveryHistory.unshift({
+    id: `dh-test-${order.orderNumber}`,
+    orderNumber: order.orderNumber,
+    vendorStore: order.vendorName,
+    date: 'Now',
+    status: 'Delivered',
+    deliveryFee: order.delivery.deliveryFee,
+  });
+}
+
+function getOrderByOrderNumber(orderNumber) {
+  return (
+    buyerOrders.find((order) => order.orderNumber === orderNumber) ||
+    vendorOrders.find((order) => order.orderNumber === orderNumber) ||
+    null
+  );
+}
+
+export {
+  buildTestOrderFromCart,
+  submitTestOrder,
+  updateOrderRecord,
+  addTestDeliveryRequest,
+  setActiveDeliveryFromOrder,
+  addDeliveryHistoryRecord,
+  getOrderByOrderNumber,
+};

@@ -13,8 +13,8 @@ const menu = [
   { key: 'Products', icon: 'basket-outline', navigate: 'Products' },
   { key: 'Orders', icon: 'receipt-outline', navigate: 'Orders' },
   { key: 'Delivery', icon: 'motorbike', navigate: 'ChooseDelivery' },
-  { key: 'Subscription', icon: 'shield-checkmark-outline', navigate: 'Subscription' },
-  { key: 'Profile', icon: 'person-outline', navigate: 'Profile' },
+  { key: 'Subscription', icon: 'shield-check-outline', navigate: 'Subscription' },
+  { key: 'Profile', icon: 'account-outline', navigate: 'Profile' },
 ];
 
 export default function VendorDashboardScreen({ navigation }) {

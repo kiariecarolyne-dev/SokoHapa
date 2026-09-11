@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import PrimaryButton from '../../components/PrimaryButton';
 import StatusBadge from '../../components/StatusBadge';
 import { activeDelivery } from '../../services/mockData';
+import { completeTestDelivery } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function ActiveDeliveryScreen({ navigation, route }) {
@@ -15,8 +16,21 @@ export default function ActiveDeliveryScreen({ navigation, route }) {
   };
 
   const handleDelivered = () => {
+    const deliveryOrderNumber = activeDelivery.orderNumber;
+    const completed = completeTestDelivery(deliveryOrderNumber);
+    if (!completed) {
+      Alert.alert(
+        'Not Completed',
+        'Completing a delivery is only available in TEST MODE (development).'
+      );
+      return;
+    }
     setParcelStatus('Delivered');
-    Alert.alert('Delivered', 'Parcel marked as delivered.');
+    Alert.alert(
+      'Delivered',
+      `Parcel for order ${deliveryOrderNumber} marked as delivered. The order is now Completed for the buyer and vendor, and was added to your delivery history.`,
+      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    );
   };
 
   const delivery = { ...activeDelivery, parcelStatus };

@@ -2,14 +2,23 @@ import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import PrimaryButton from '../../components/PrimaryButton';
 import { deliveryRequests } from '../../services/mockData';
+import { acceptTestDeliveryRequest } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
 export default function DeliveryRequestsScreen({ navigation }) {
   const handleAccept = (request) => {
+    const accepted = acceptTestDeliveryRequest(request.id);
+    if (!accepted) {
+      Alert.alert(
+        'Not Accepted',
+        'Accepting delivery requests is only available in TEST MODE (development).'
+      );
+      return;
+    }
     Alert.alert(
       'Request Accepted',
-      `Delivery for order ${request.orderNumber} accepted.`,
+      `Delivery for order ${request.orderNumber} accepted and added to your active delivery.`,
       [
         { text: 'View Delivery', onPress: () => navigation.navigate('ActiveDelivery', { requestId: request.id }) },
         { text: 'OK' },

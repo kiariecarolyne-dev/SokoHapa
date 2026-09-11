@@ -2,6 +2,8 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useCart } from '../../context/CartContext';
+import { currentUserProfile } from '../../services/mockData';
+import { TEST_MODE, placeTestOrder } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
@@ -9,6 +11,36 @@ export default function CheckoutScreen({ navigation }) {
   const { items, subtotal, deliveryFee, total, clearCart } = useCart();
 
   const handlePlaceOrder = () => {
+    if (TEST_MODE) {
+      const order = placeTestOrder({
+        cartItems: items,
+        subtotal,
+        deliveryFee,
+        total,
+        buyerName: currentUserProfile.fullName,
+        buyerPhone: currentUserProfile.phone,
+      });
+      if (order) {
+        clearCart();
+        Alert.alert(
+          'Test Order Placed',
+          `Order ${order.orderNumber} placed in TEST MODE. Payments are not implemented yet.`,
+          [
+            {
+              text: 'View My Orders',
+              onPress: () => {
+                navigation.popToTop();
+                navigation.navigate('Orders');
+              },
+            },
+            { text: 'Keep Shopping', style: 'cancel', onPress: () => {} },
+          ]
+        );
+        return;
+      }
+    }
+
+    // Fallback placeholder when TEST_MODE is off / production.
     Alert.alert(
       'Order Placed',
       'This is a placeholder order. Payments are not implemented yet.',
@@ -73,6 +105,16 @@ export default function CheckoutScreen({ navigation }) {
             Payment (e.g. M-Pesa) will be added in a later phase.
           </Text>
         </View>
+
+        {TEST_MODE ? (
+          <View style={styles.testModeCard}>
+            <Ionicons name="flask-outline" size={18} color={colors.warning} />
+            <Text style={styles.testModeText}>
+              TEST MODE: placing this order creates an in-memory test order shared
+              with the vendor and delivery screens. No payment is taken.
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -186,6 +228,20 @@ const styles = StyleSheet.create({
     flex: 1,
     ...typography.bodySmall,
     color: colors.textSecondary,
+    marginLeft: spacing.sm,
+  },
+  testModeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  testModeText: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: colors.warning,
     marginLeft: spacing.sm,
   },
   footer: {

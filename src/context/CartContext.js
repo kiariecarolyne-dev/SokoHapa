@@ -34,6 +34,8 @@ export function CartProvider({ children }) {
           name: product.name,
           pricePerKg: product.pricePerKg,
           availableQuantity: product.availableQuantity,
+          masterProductId: product.masterProductId ?? null,
+          unit: product.unit || 'kg',
           quantity,
         },
       ];
