@@ -4,7 +4,6 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { deliveryRequests } from '../../services/mockData';
 import { acceptTestDeliveryRequest } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
-import { formatKES } from '../../utils/format';
 
 export default function DeliveryRequestsScreen({ navigation }) {
   const handleAccept = (request) => {
@@ -63,7 +62,7 @@ export default function DeliveryRequestsScreen({ navigation }) {
         </View>
         <View style={styles.metaItem}>
           <MaterialCommunityIcons name="cash-multiple" size={16} color={colors.textMuted} />
-          <Text style={styles.metaText}>{formatKES(item.deliveryFee)} fee (placeholder)</Text>
+          <Text style={styles.metaText}>Delivery fee paid separately in cash</Text>
         </View>
       </View>
 

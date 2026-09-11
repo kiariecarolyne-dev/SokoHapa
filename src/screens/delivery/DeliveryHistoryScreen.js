@@ -3,7 +3,6 @@ import { Ionicons } from '@expo/vector-icons';
 import StatusBadge from '../../components/StatusBadge';
 import { deliveryHistory } from '../../services/mockData';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
-import { formatKES } from '../../utils/format';
 
 export default function DeliveryHistoryScreen() {
   const renderItem = ({ item }) => (
@@ -20,7 +19,7 @@ export default function DeliveryHistoryScreen() {
         <Text style={styles.meta}>{item.date}</Text>
         <Text style={styles.dot}>•</Text>
         <Ionicons name="cash-outline" size={14} color={colors.textMuted} />
-        <Text style={styles.meta}>{formatKES(item.deliveryFee)} fee (placeholder)</Text>
+        <Text style={styles.meta}>Delivery fee paid separately in cash</Text>
       </View>
     </View>
   );

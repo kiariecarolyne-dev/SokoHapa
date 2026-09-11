@@ -12,7 +12,6 @@ export default function CartScreen({ navigation }) {
     decreaseQuantity,
     removeItem,
     subtotal,
-    deliveryFee,
     total,
   } = useCart();
 
@@ -49,9 +48,12 @@ export default function CartScreen({ navigation }) {
 
       <View style={styles.summary}>
         <SummaryRow label="Subtotal" value={formatKES(subtotal)} />
-        <SummaryRow label="Delivery Fee (placeholder)" value={formatKES(deliveryFee)} />
         <View style={styles.divider} />
         <SummaryRow label="Total" value={formatKES(total)} bold />
+        <Text style={styles.deliveryNote}>
+          Delivery fee is paid separately in cash to the delivery person and
+          depends on the delivery distance. Carrier bag is chosen at checkout.
+        </Text>
         <PrimaryButton
           title="Proceed to Checkout"
           onPress={() => navigation.navigate('Checkout')}
@@ -142,5 +144,10 @@ const styles = StyleSheet.create({
   },
   checkoutButton: {
     marginTop: spacing.md,
+  },
+  deliveryNote: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
 });

@@ -38,10 +38,27 @@ export default function BuyerOrderDetailsScreen({ navigation, route }) {
 
         <View style={styles.divider} />
 
+        {order.packaging ? (
+          <View style={styles.statusBlock}>
+            <Text style={styles.sectionTitle}>Packaging</Text>
+            <Text style={styles.itemName}>
+              {order.packaging.name} — {formatKES(order.packaging.price)}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>Order Total</Text>
           <Text style={styles.totalValue}>{formatKES(order.total)}</Text>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Delivery Fee</Text>
+        <Text style={styles.itemMeta}>
+          Paid separately in cash directly to the delivery person. The fee
+          depends on the delivery distance.
+        </Text>
       </View>
 
       <View style={styles.card}>
@@ -141,5 +158,8 @@ const styles = StyleSheet.create({
   },
   spacer: {
     height: spacing.md,
+  },
+  statusBlock: {
+    marginTop: spacing.md,
   },
 });

@@ -80,9 +80,25 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
 
         <View style={styles.divider} />
 
+        {order.packaging ? (
+          <View style={styles.statusBlock}>
+            <Text style={styles.sectionTitle}>Packaging</Text>
+            <Text style={styles.itemName}>
+              {order.packaging.name} — {formatKES(order.packaging.price)}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>Order Total</Text>
           <Text style={styles.totalValue}>{formatKES(order.total)}</Text>
+        </View>
+
+        <View style={styles.statusBlock}>
+          <Text style={styles.sectionTitle}>Delivery Fee</Text>
+          <Text style={styles.itemMeta}>
+            Paid separately in cash by the buyer to the delivery person.
+          </Text>
         </View>
 
         <View style={styles.statusBlock}>

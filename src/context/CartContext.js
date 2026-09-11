@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
-const DELIVERY_FEE_PLACEHOLDER = 150;
-
 const CartContext = createContext({
   items: [],
   addItem: () => {},
@@ -10,7 +8,6 @@ const CartContext = createContext({
   decreaseQuantity: () => {},
   clearCart: () => {},
   subtotal: 0,
-  deliveryFee: DELIVERY_FEE_PLACEHOLDER,
   total: 0,
 });
 
@@ -73,10 +70,12 @@ export function CartProvider({ children }) {
       (sum, item) => sum + item.pricePerKg * item.quantity,
       0
     );
-    // Price calculations are kept here so they can later become real dynamic
-    // calculations (e.g. per-store delivery fees, discounts, taxes).
-    const deliveryFee = DELIVERY_FEE_PLACEHOLDER;
-    const total = subtotal + deliveryFee;
+    // The payable total intentionally does NOT include a delivery fee: the
+    // delivery fee is paid separately in cash directly to the delivery person
+    // and depends on the delivery distance. Packaging is chosen at checkout and
+    // added to the order total there, so `total` here equals the product
+    // subtotal only.
+    const total = subtotal;
 
     return {
       items,
@@ -86,7 +85,6 @@ export function CartProvider({ children }) {
       decreaseQuantity,
       clearCart,
       subtotal,
-      deliveryFee,
       total,
     };
   }, [items]);

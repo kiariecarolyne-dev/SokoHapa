@@ -63,6 +63,14 @@ export default function ActiveDeliveryScreen({ navigation, route }) {
           <Ionicons name="call-outline" size={20} color={colors.primary} />
           <Text style={styles.infoText}>{delivery.buyerPhone} (placeholder)</Text>
         </View>
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>Delivery Fee</Text>
+        <View style={styles.infoRow}>
+          <Ionicons name="cash-outline" size={20} color={colors.primary} />
+          <Text style={styles.infoText}>
+            Paid separately in cash directly to you by the buyer.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.card}>

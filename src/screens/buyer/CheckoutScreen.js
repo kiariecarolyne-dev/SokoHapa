@@ -1,4 +1,5 @@
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useCart } from '../../context/CartContext';
@@ -7,16 +8,34 @@ import { TEST_MODE, placeTestOrder } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
+const PACKAGING_OPTIONS = [
+  { id: 'small-bag', name: 'Small Carrier Bag', price: 20 },
+  { id: 'large-bag', name: 'Large Carrier Bag', price: 50 },
+];
+
 export default function CheckoutScreen({ navigation }) {
-  const { items, subtotal, deliveryFee, total, clearCart } = useCart();
+  const { items, subtotal, clearCart } = useCart();
+  const [packaging, setPackaging] = useState(null);
+
+  const packagingFee = packaging ? packaging.price : 0;
+  const orderTotal = subtotal + packagingFee;
 
   const handlePlaceOrder = () => {
+    if (!packaging) {
+      Alert.alert(
+        'Carrier Bag Required',
+        'Please choose a carrier bag before placing your order.'
+      );
+      return;
+    }
+
     if (TEST_MODE) {
       const order = placeTestOrder({
         cartItems: items,
         subtotal,
-        deliveryFee,
-        total,
+        packaging,
+        packagingFee,
+        total: orderTotal,
         buyerName: currentUserProfile.fullName,
         buyerPhone: currentUserProfile.phone,
       });
@@ -24,7 +43,7 @@ export default function CheckoutScreen({ navigation }) {
         clearCart();
         Alert.alert(
           'Test Order Placed',
-          `Order ${order.orderNumber} placed in TEST MODE. Payments are not implemented yet.`,
+          `Order ${order.orderNumber} placed in TEST MODE with ${packaging.name}. Payments are not implemented yet, and the delivery fee is paid separately in cash to the delivery person.`,
           [
             {
               text: 'View My Orders',
@@ -84,10 +103,40 @@ export default function CheckoutScreen({ navigation }) {
             </View>
           ))}
           <View style={styles.divider} />
-          <SummaryRow label="Subtotal" value={formatKES(subtotal)} />
-          <SummaryRow label="Delivery Fee (placeholder)" value={formatKES(deliveryFee)} />
+          <SummaryRow label="Products" value={formatKES(subtotal)} />
+          <SummaryRow label="Packaging" value={formatKES(packagingFee)} />
           <View style={styles.divider} />
-          <SummaryRow label="Total Amount" value={formatKES(total)} bold />
+          <SummaryRow label="Order Total" value={formatKES(orderTotal)} bold />
+        </View>
+
+        <Text style={styles.sectionTitle}>Choose Carrier Bag</Text>
+        {PACKAGING_OPTIONS.map((option) => {
+          const selected = packaging?.id === option.id;
+          return (
+            <TouchableOpacity
+              key={option.id}
+              activeOpacity={0.85}
+              style={[styles.packagingRow, selected && styles.packagingRowSelected]}
+              onPress={() => setPackaging(option)}
+            >
+              <Ionicons
+                name={selected ? 'radio-button-on' : 'radio-button-off'}
+                size={20}
+                color={selected ? colors.primary : colors.textMuted}
+              />
+              <Text style={styles.packagingName}>{option.name}</Text>
+              <Text style={styles.packagingPrice}>{formatKES(option.price)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+
+        <Text style={styles.sectionTitle}>Delivery Fee</Text>
+        <View style={styles.placeholderCard}>
+          <Ionicons name="cash-outline" size={20} color={colors.primary} />
+          <Text style={styles.placeholderText}>
+            Delivery fee is paid separately in cash directly to the delivery
+            person. The delivery fee depends on the delivery distance.
+          </Text>
         </View>
 
         <Text style={styles.sectionTitle}>Delivery Information</Text>
@@ -111,7 +160,8 @@ export default function CheckoutScreen({ navigation }) {
             <Ionicons name="flask-outline" size={18} color={colors.warning} />
             <Text style={styles.testModeText}>
               TEST MODE: placing this order creates an in-memory test order shared
-              with the vendor and delivery screens. No payment is taken.
+              with the vendor and delivery screens. No payment is taken and the
+              delivery fee is not included in the total.
             </Text>
           </View>
         ) : null}
@@ -119,8 +169,8 @@ export default function CheckoutScreen({ navigation }) {
 
       <View style={styles.footer}>
         <View style={styles.footerRow}>
-          <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerValue}>{formatKES(total)}</Text>
+          <Text style={styles.footerLabel}>Order Total</Text>
+          <Text style={styles.footerValue}>{formatKES(orderTotal)}</Text>
         </View>
         <PrimaryButton title="Place Order" onPress={handlePlaceOrder} icon="checkmark" />
       </View>
@@ -214,6 +264,32 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
     marginVertical: spacing.sm,
+  },
+  packagingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  packagingRowSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  packagingName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  packagingPrice: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primaryDark,
   },
   placeholderCard: {
     flexDirection: 'row',

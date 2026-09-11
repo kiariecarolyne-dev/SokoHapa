@@ -13,6 +13,7 @@ export const stores = [
       {
         id: 'p-1',
         name: 'Tomatoes',
+        masterProductId: 'tomato',
         category: 'Vegetables',
         pricePerKg: 100,
         availableQuantity: 50,
@@ -22,6 +23,7 @@ export const stores = [
       {
         id: 'p-2',
         name: 'Sukuma Wiki (Kale)',
+        masterProductId: 'kale',
         category: 'Vegetables',
         pricePerKg: 60,
         availableQuantity: 30,
@@ -31,6 +33,7 @@ export const stores = [
       {
         id: 'p-3',
         name: 'Onions',
+        masterProductId: 'onion',
         category: 'Vegetables',
         pricePerKg: 120,
         availableQuantity: 40,
@@ -40,6 +43,7 @@ export const stores = [
       {
         id: 'p-4',
         name: 'Avocados',
+        masterProductId: 'avocado',
         category: 'Fruits',
         pricePerKg: 150,
         availableQuantity: 25,
@@ -49,6 +53,7 @@ export const stores = [
       {
         id: 'p-5',
         name: 'Green Peppers',
+        masterProductId: 'green-pepper',
         category: 'Vegetables',
         pricePerKg: 140,
         availableQuantity: 0,
@@ -69,6 +74,7 @@ export const stores = [
       {
         id: 'p-6',
         name: 'Rice (Pishori)',
+        masterProductId: 'rice',
         category: 'Cereals',
         pricePerKg: 220,
         availableQuantity: 120,
@@ -78,6 +84,7 @@ export const stores = [
       {
         id: 'p-7',
         name: 'Maize Grains',
+        masterProductId: 'maize-grain',
         category: 'Grains',
         pricePerKg: 80,
         availableQuantity: 200,
@@ -87,6 +94,7 @@ export const stores = [
       {
         id: 'p-8',
         name: 'Beans (Nyayo)',
+        masterProductId: 'common-beans',
         category: 'Grains',
         pricePerKg: 160,
         availableQuantity: 90,
@@ -96,6 +104,7 @@ export const stores = [
       {
         id: 'p-9',
         name: 'Millet',
+        masterProductId: 'pearl-millet',
         category: 'Cereals',
         pricePerKg: 180,
         availableQuantity: 45,
@@ -105,6 +114,7 @@ export const stores = [
       {
         id: 'p-10',
         name: 'Green Grams',
+        masterProductId: 'green-grams',
         category: 'Grains',
         pricePerKg: 170,
         availableQuantity: 35,
@@ -125,6 +135,7 @@ export const stores = [
       {
         id: 'p-11',
         name: 'Oranges',
+        masterProductId: 'orange',
         category: 'Fruits',
         pricePerKg: 90,
         availableQuantity: 60,
@@ -134,6 +145,7 @@ export const stores = [
       {
         id: 'p-12',
         name: 'Bananas',
+        masterProductId: 'banana',
         category: 'Fruits',
         pricePerKg: 70,
         availableQuantity: 80,
@@ -143,6 +155,7 @@ export const stores = [
       {
         id: 'p-13',
         name: 'Mangoes',
+        masterProductId: 'mango',
         category: 'Fruits',
         pricePerKg: 130,
         availableQuantity: 55,
@@ -152,6 +165,7 @@ export const stores = [
       {
         id: 'p-14',
         name: 'Pineapples',
+        masterProductId: 'pineapple',
         category: 'Fruits',
         pricePerKg: 110,
         availableQuantity: 20,
@@ -172,6 +186,7 @@ export const stores = [
       {
         id: 'p-15',
         name: 'Carrots',
+        masterProductId: 'carrot',
         category: 'Vegetables',
         pricePerKg: 110,
         availableQuantity: 40,
@@ -181,6 +196,7 @@ export const stores = [
       {
         id: 'p-16',
         name: 'Cabbages',
+        masterProductId: 'cabbage',
         category: 'Vegetables',
         pricePerKg: 50,
         availableQuantity: 70,
@@ -190,6 +206,7 @@ export const stores = [
       {
         id: 'p-17',
         name: 'Potatoes (Sherehe)',
+        masterProductId: 'irish-potato',
         category: 'Vegetables',
         pricePerKg: 95,
         availableQuantity: 100,
@@ -199,6 +216,7 @@ export const stores = [
       {
         id: 'p-18',
         name: 'Sweet Potatoes',
+        masterProductId: 'sweet-potato',
         category: 'Other',
         pricePerKg: 85,
         availableQuantity: 30,
@@ -521,7 +539,8 @@ let testOrderSeq = 0;
 function buildTestOrderFromCart({
   cartItems,
   subtotal,
-  deliveryFee,
+  packaging = null,
+  packagingFee = 0,
   total,
   buyerName = currentUserProfile.fullName,
   buyerPhone = currentUserProfile.phone,
@@ -561,7 +580,8 @@ function buildTestOrderFromCart({
     vendorName: vendorStoreName,
     items,
     subtotal,
-    deliveryFee,
+    packaging: packaging || null,
+    packagingFee: packagingFee || 0,
     total,
     status: 'New',
     paymentStatus: 'Test (No Payment)',
@@ -572,7 +592,6 @@ function buildTestOrderFromCart({
       pickupLocation,
       deliveryLocation: 'Buyer delivery address (placeholder)',
       distanceKm: 8,
-      deliveryFee,
     },
   };
 }
@@ -599,7 +618,6 @@ function addTestDeliveryRequest(order) {
     pickupLocation: order.delivery.pickupLocation,
     deliveryLocation: order.delivery.deliveryLocation,
     distanceKm: order.delivery.distanceKm,
-    deliveryFee: order.delivery.deliveryFee,
   });
 }
 
@@ -622,7 +640,6 @@ function addDeliveryHistoryRecord(order) {
     vendorStore: order.vendorName,
     date: 'Now',
     status: 'Delivered',
-    deliveryFee: order.delivery.deliveryFee,
   });
 }
 
