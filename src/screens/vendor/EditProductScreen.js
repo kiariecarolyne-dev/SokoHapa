@@ -1,30 +1,112 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TextField from '../../components/TextField';
 import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
-import { categories, getProductById } from '../../services/mockData';
+import { useAuth } from '../../context/AuthContext';
+import {
+  categories,
+  getProductById,
+  removeVendorStoreProduct,
+  updateVendorStoreProduct,
+} from '../../services/mockData';
+import { vendorCanManageStore } from '../../utils/testMode';
 import { colors, radius, spacing, typography } from '../../utils/theme';
 
+// Edits one of the vendor's own store products. Editing is a
+// subscription-protected action (see TEST_MODE gating). Changes apply only to
+// the vendor's store copy and never to the master catalogue.
 export default function EditProductScreen({ navigation, route }) {
+  const { userProfile } = useAuth();
   const productId = route?.params?.productId;
   const existing = getProductById(productId);
 
-  const [name, setName] = useState(existing?.product.name || '');
-  const [category, setCategory] = useState(existing?.product.category || categories[0]);
-  const [imageSelected, setImageSelected] = useState(Boolean(existing));
-  const [price, setPrice] = useState(existing ? String(existing.product.pricePerKg) : '');
-  const [quantity, setQuantity] = useState(existing ? String(existing.product.availableQuantity) : '');
-  const [available, setAvailable] = useState(existing?.product.available ?? true);
+  const canManageStore = vendorCanManageStore(userProfile);
+  const product = existing?.product;
+  const store = existing?.store;
+
+  const [name, setName] = useState(product?.name || '');
+  const [category, setCategory] = useState(product?.category || categories[0]);
+  const [imageSelected, setImageSelected] = useState(Boolean(product));
+  const [priceText, setPriceText] = useState(product ? String(product.pricePerKg) : '');
+  const [quantityText, setQuantityText] = useState(product ? String(product.availableQuantity) : '');
+  const [available, setAvailable] = useState(product?.available ?? true);
+
+  const requireSubscription = () => {
+    Alert.alert(
+      'Subscription Required',
+      'An active vendor subscription is required to manage your store products.',
+      [
+        { text: 'Back', style: 'cancel', onPress: () => navigation.goBack() },
+        { text: 'View Subscription', onPress: () => navigation.replace('Subscription') },
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (!canManageStore) {
+      requireSubscription();
+    }
+  }, []);
+
+  if (!product || !store) {
+    return (
+      <View style={styles.fallback}>
+        <Text style={styles.fallbackText}>Product not found</Text>
+      </View>
+    );
+  }
 
   const handleSave = () => {
-    if (!name.trim() || !price.trim() || !quantity.trim()) {
-      Alert.alert('Missing details', 'Please fill Product Name, Price and Quantity.');
+    if (!canManageStore) {
+      requireSubscription();
       return;
     }
-    Alert.alert('Changes Saved', 'Editing products is not connected to a database yet. This is a placeholder.');
-    navigation.goBack();
+    const price = Number(priceText);
+    const quantity = Number(quantityText);
+    if (
+      !name.trim() ||
+      !priceText.trim() ||
+      !quantityText.trim() ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isFinite(quantity) ||
+      quantity < 0
+    ) {
+      Alert.alert('Missing details', 'Please enter a valid Product Name, Price and Quantity.');
+      return;
+    }
+    updateVendorStoreProduct(store.id, product.id, {
+      name: name.trim(),
+      category: category.trim(),
+      pricePerKg: price,
+      availableQuantity: quantity,
+      available,
+    });
+    Alert.alert('Changes Saved', 'Your store product has been updated.', [
+      { text: 'OK', onPress: () => navigation.goBack() },
+    ]);
+  };
+
+  const handleRemove = () => {
+    Alert.alert(
+      'Remove Product',
+      `Remove "${product.name}" from your store?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            removeVendorStoreProduct(store.id, product.id);
+            Alert.alert('Product Removed', 'The product was removed from your store.', [
+              { text: 'OK', onPress: () => navigation.goBack() },
+            ]);
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -73,17 +155,17 @@ export default function EditProductScreen({ navigation, route }) {
           />
 
           <TextField
-            label="Price per Kg (KES)"
-            value={price}
-            onChangeText={setPrice}
+            label="Price (KES)"
+            value={priceText}
+            onChangeText={setPriceText}
             placeholder="e.g. 100"
             keyboardType="number-pad"
             icon="pricetag"
           />
           <TextField
-            label="Available Quantity (kg)"
-            value={quantity}
-            onChangeText={setQuantity}
+            label="Available Quantity"
+            value={quantityText}
+            onChangeText={setQuantityText}
             placeholder="e.g. 50"
             keyboardType="number-pad"
             icon="cube"
@@ -103,6 +185,13 @@ export default function EditProductScreen({ navigation, route }) {
           </View>
 
           <PrimaryButton title="Save Changes" onPress={handleSave} icon="checkmark" />
+          <View style={styles.spacer} />
+          <PrimaryButton
+            title="Remove from Store"
+            variant="danger"
+            icon="trash-outline"
+            onPress={handleRemove}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -120,6 +209,15 @@ const styles = StyleSheet.create({
   scroll: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  fallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  fallbackText: {
+    color: colors.textMuted,
   },
   label: {
     ...typography.caption,

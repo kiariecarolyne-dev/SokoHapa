@@ -19,7 +19,11 @@ const Stack = createNativeStackNavigator();
 export default function VendorNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Subscription"
+      // Vendors land on the Dashboard first (not the Subscription screen) so
+      // that every authenticated vendor can browse the master product
+      // catalogue. Subscription-protected actions still route the vendor to
+      // the existing Subscription screen when they are not subscribed.
+      initialRouteName="Dashboard"
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,

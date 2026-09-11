@@ -225,6 +225,39 @@ export function getProductById(id) {
   return null;
 }
 
+// ---- Prototype vendor-store product helpers (TEST_MODE / dev testing) ----
+// These mutate the in-memory prototype `stores` data so the whole
+// Buyer -> Vendor -> Delivery workflow can be exercised in development before
+// real Firestore persistence is wired up. The master catalogue
+// (services/masterProducts.js) is NEVER touched by these helpers.
+
+export function addProductToVendorStore(storeId, productRecord) {
+  const store = getStoreById(storeId);
+  if (!store) return false;
+  if (store.products.some((p) => p.id === productRecord.id)) {
+    return false;
+  }
+  store.products.push(productRecord);
+  return true;
+}
+
+export function updateVendorStoreProduct(storeId, productId, updates) {
+  const store = getStoreById(storeId);
+  if (!store) return false;
+  const product = store.products.find((p) => p.id === productId);
+  if (!product) return false;
+  Object.assign(product, updates);
+  return true;
+}
+
+export function removeVendorStoreProduct(storeId, productId) {
+  const store = getStoreById(storeId);
+  if (!store) return false;
+  const before = store.products.length;
+  store.products = store.products.filter((p) => p.id !== productId);
+  return store.products.length < before;
+}
+
 export const currentVendor = {
   id: 'vendor-1',
   fullName: 'Mary Njeri',

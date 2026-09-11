@@ -1,27 +1,115 @@
-import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TextField from '../../components/TextField';
 import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
-import { categories } from '../../services/mockData';
+import { useAuth } from '../../context/AuthContext';
+import {
+  PRODUCT_UNIT_OPTIONS,
+  getMasterProductById,
+  getUnitLabel,
+  resolveProductImage,
+} from '../../utils/productCatalogue';
+import { addProductToVendorStore, categories } from '../../services/mockData';
+import { vendorCanManageStore } from '../../utils/testMode';
 import { colors, radius, spacing, typography } from '../../utils/theme';
 
-export default function AddProductScreen({ navigation }) {
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState(categories[0]);
-  const [imageSelected, setImageSelected] = useState(false);
-  const [price, setPrice] = useState('');
-  const [quantity, setQuantity] = useState('');
+// Adds a product to the vendor's own store. When opened with a master product
+// (route param masterProductId) the product is linked to the master catalogue
+// via masterProductId; the master catalogue itself is never modified. Adding
+// products is a subscription-protected action (see TEST_MODE gating below).
+export default function AddProductScreen({ navigation, route }) {
+  const { userProfile } = useAuth();
+
+  const masterProductId = route?.params?.masterProductId;
+  const master = masterProductId ? getMasterProductById(masterProductId) : null;
+
+  const unitOptions = master
+    ? master.availableUnits
+    : PRODUCT_UNIT_OPTIONS.map((option) => option.code);
+
+  const [name, setName] = useState(master ? master.displayName : '');
+  const [category, setCategory] = useState(master ? master.categoryName : categories[0]);
+  const [priceText, setPriceText] = useState('');
+  const [quantityText, setQuantityText] = useState('');
+  const [unit, setUnit] = useState(master ? master.defaultUnit : 'kg');
   const [available, setAvailable] = useState(true);
+  const [imageSelected, setImageSelected] = useState(false);
+
+  const canManageStore = vendorCanManageStore(userProfile);
+  const masterImage = master ? resolveProductImage(master) : null;
+
+  const requireSubscription = () => {
+    Alert.alert(
+      'Subscription Required',
+      'An active vendor subscription is required to add products to your store.',
+      [
+        { text: 'Back', style: 'cancel', onPress: () => navigation.goBack() },
+        { text: 'View Subscription', onPress: () => navigation.replace('Subscription') },
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (!canManageStore) {
+      requireSubscription();
+    }
+  }, []);
 
   const handleAdd = () => {
-    if (!name.trim() || !price.trim() || !quantity.trim()) {
-      Alert.alert('Missing details', 'Please fill Product Name, Price and Quantity.');
+    if (!canManageStore) {
+      requireSubscription();
       return;
     }
-    Alert.alert('Product Added', 'Adding products is not connected to a database yet. This is a placeholder.');
-    navigation.goBack();
+    const price = Number(priceText);
+    const quantity = Number(quantityText);
+    if (
+      !priceText.trim() ||
+      !quantityText.trim() ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isFinite(quantity) ||
+      quantity < 0
+    ) {
+      Alert.alert('Missing details', 'Please enter a valid price and available quantity.');
+      return;
+    }
+
+    const record = master
+      ? {
+          id: master.productId,
+          name: master.displayName,
+          category: master.categoryName,
+          pricePerKg: price,
+          availableQuantity: quantity,
+          available,
+          description: `${master.nameEnglish} (${master.nameSwahili})`,
+          masterProductId: master.productId,
+          unit,
+          isAvailable: available,
+        }
+      : {
+          id: `custom-${Date.now()}`,
+          name: name.trim(),
+          category,
+          pricePerKg: price,
+          availableQuantity: quantity,
+          available,
+          description: name.trim(),
+          masterProductId: null,
+          unit,
+          isAvailable: available,
+        };
+
+    const added = addProductToVendorStore('store-1', record);
+    Alert.alert(
+      added ? 'Product Added' : 'Already in Store',
+      added
+        ? `${record.name} has been added to your store.`
+        : `${record.name} is already in your store.`,
+      added ? [{ text: 'OK', onPress: () => navigation.goBack() }] : [{ text: 'OK' }]
+    );
   };
 
   return (
@@ -31,26 +119,75 @@ export default function AddProductScreen({ navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {master ? (
+            <View style={styles.infoCard}>
+              {masterImage ? (
+                <Image source={masterImage} style={styles.preview} resizeMode="cover" />
+              ) : null}
+              <View style={styles.infoBody}>
+                <Text style={styles.infoTitle}>{master.displayName}</Text>
+                <Text style={styles.infoMeta}>{master.categoryName}</Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              <TextField
+                label="Product Name"
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Tomatoes"
+                autoCapitalize="words"
+                icon="leaf"
+              />
+              <Text style={styles.label}>Category</Text>
+              <View style={styles.chipRow}>
+                {categories.map((cat) => {
+                  const active = category === cat;
+                  return (
+                    <View key={cat}>
+                      <Text
+                        onPress={() => setCategory(cat)}
+                        style={[styles.chip, active && styles.chipActive, { color: active ? colors.white : colors.textSecondary }]}
+                      >
+                        {cat}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={styles.spacer} />
+              <PhotoField
+                label="Product Image"
+                value={imageSelected}
+                icon="basket-outline"
+                onPress={() => {
+                  setImageSelected(true);
+                  Alert.alert('Image upload', 'Product image uploads will be available in a later phase.');
+                }}
+              />
+            </>
+          )}
+
           <TextField
-            label="Product Name"
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. Tomatoes"
-            autoCapitalize="words"
-            icon="leaf"
+            label="Price (KES)"
+            value={priceText}
+            onChangeText={setPriceText}
+            placeholder="e.g. 100"
+            keyboardType="number-pad"
+            icon="pricetag"
           />
 
-          <Text style={styles.label}>Category</Text>
+          <Text style={styles.label}>Unit</Text>
           <View style={styles.chipRow}>
-            {categories.map((cat) => {
-              const active = category === cat;
+            {unitOptions.map((option) => {
+              const active = unit === option;
               return (
-                <View key={cat}>
+                <View key={option}>
                   <Text
-                    onPress={() => setCategory(cat)}
+                    onPress={() => setUnit(option)}
                     style={[styles.chip, active && styles.chipActive, { color: active ? colors.white : colors.textSecondary }]}
                   >
-                    {cat}
+                    {getUnitLabel(option)}
                   </Text>
                 </View>
               );
@@ -59,28 +196,10 @@ export default function AddProductScreen({ navigation }) {
 
           <View style={styles.spacer} />
 
-          <PhotoField
-            label="Product Image"
-            value={imageSelected}
-            icon="basket-outline"
-            onPress={() => {
-              setImageSelected(true);
-              Alert.alert('Image upload', 'Product image uploads will be available in a later phase.');
-            }}
-          />
-
           <TextField
-            label="Price per Kg (KES)"
-            value={price}
-            onChangeText={setPrice}
-            placeholder="e.g. 100"
-            keyboardType="number-pad"
-            icon="pricetag"
-          />
-          <TextField
-            label="Available Quantity (kg)"
-            value={quantity}
-            onChangeText={setQuantity}
+            label="Available Quantity"
+            value={quantityText}
+            onChangeText={setQuantityText}
             placeholder="e.g. 50"
             keyboardType="number-pad"
             icon="cube"
@@ -99,7 +218,7 @@ export default function AddProductScreen({ navigation }) {
             />
           </View>
 
-          <PrimaryButton title="Add Product" onPress={handleAdd} icon="add" />
+          <PrimaryButton title="Add to Store" onPress={handleAdd} icon="add" />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -117,6 +236,33 @@ const styles = StyleSheet.create({
   scroll: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  preview: {
+    width: 88,
+    height: 88,
+    borderRadius: radius.md,
+  },
+  infoBody: {
+    flex: 1,
+    marginLeft: spacing.md,
+    justifyContent: 'center',
+  },
+  infoTitle: {
+    ...typography.subtitle,
+    fontSize: 17,
+  },
+  infoMeta: {
+    ...typography.bodySmall,
+    marginTop: 2,
   },
   label: {
     ...typography.caption,

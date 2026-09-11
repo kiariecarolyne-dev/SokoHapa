@@ -5,6 +5,7 @@ import AppHeader from '../../components/AppHeader';
 import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { currentVendor } from '../../services/mockData';
+import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 const menu = [
@@ -29,6 +30,15 @@ export default function VendorDashboardScreen({ navigation }) {
         }
       />
       <ScrollView contentContainerStyle={styles.scroll}>
+        {TEST_MODE ? (
+          <View style={styles.testModeBanner}>
+            <Ionicons name="flask-outline" size={18} color={colors.primaryDark} />
+            <Text style={styles.testModeText}>
+              TEST MODE — subscription gates are bypassed for development
+              testing. Real subscription rules re-enable for production.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.welcomeCard}>
           <View style={styles.avatar}>
             <Ionicons name="person-outline" size={26} color={colors.white} />
@@ -78,6 +88,23 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: spacing.md,
+  },
+  testModeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  testModeText: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: colors.primaryDark,
+    marginLeft: spacing.sm,
+    lineHeight: 18,
   },
   welcomeCard: {
     flexDirection: 'row',
