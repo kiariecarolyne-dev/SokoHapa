@@ -1,14 +1,34 @@
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
 import StoreCard from '../../components/StoreCard';
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { getProfilePhotoUrl } from '../../services/profilePhotoService';
 import { categories, featuredStoreIds, stores } from '../../services/mockData';
+import { onActiveStores } from '../../services/storeService';
+import { getActiveCategories } from '../../utils/productCatalogue';
+import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function BuyerHomeScreen({ navigation }) {
   const { items } = useCart();
-  const featuredStores = stores.filter((store) => featuredStoreIds.includes(store.id));
+  const { userProfile } = useAuth();
+  const profilePhoto = getProfilePhotoUrl(userProfile?.profilePhoto);
+  const [activeStores, setActiveStores] = useState([]);
+
+  const categoryOptions = TEST_MODE
+    ? categories
+    : getActiveCategories().map((category) => category.categoryName);
+
+  useEffect(() => {
+    if (TEST_MODE) {
+      setActiveStores(stores.filter((store) => featuredStoreIds.includes(store.id)));
+      return () => {};
+    }
+    return onActiveStores(setActiveStores);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -21,7 +41,11 @@ export default function BuyerHomeScreen({ navigation }) {
               onPress={() => navigation.navigate('Profile')}
               style={styles.headerIcon}
             >
-              <Ionicons name="person-circle-outline" size={26} color={colors.text} />
+              {profilePhoto ? (
+                <Image source={{ uri: profilePhoto }} style={styles.avatar} />
+              ) : (
+                <Ionicons name="person-circle-outline" size={26} color={colors.text} />
+              )}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate('Cart')} style={styles.cartIcon}>
               <Ionicons name="cart-outline" size={24} color={colors.text} />
@@ -51,7 +75,7 @@ export default function BuyerHomeScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoriesRow}
         >
-          {categories.map((category) => (
+          {categoryOptions.map((category) => (
             <TouchableOpacity
               key={category}
               activeOpacity={0.8}
@@ -70,7 +94,7 @@ export default function BuyerHomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {featuredStores.map((store) => (
+        {activeStores.map((store) => (
           <StoreCard
             key={store.id}
             store={store}
@@ -78,12 +102,15 @@ export default function BuyerHomeScreen({ navigation }) {
           />
         ))}
 
-        <View style={styles.helperCard}>
-          <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
-          <Text style={styles.helperText}>
-            Placeholder data — stores and products are not live yet.
-          </Text>
-        </View>
+        {TEST_MODE ? (
+          <View style={styles.helperCard}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+            <Text style={styles.helperText}>
+              TEST MODE: stores and products below are placeholder data. Real
+              Firestore stores appear when TEST_MODE is disabled.
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -108,6 +135,11 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     padding: 4,
+  },
+  avatar: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.round,
   },
   badge: {
     position: 'absolute',

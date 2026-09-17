@@ -1,6 +1,10 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import OrderCard from '../../components/OrderCard';
 import { vendorOrders } from '../../services/mockData';
+import { onVendorOrders } from '../../services/orderService';
+import { useAuth } from '../../context/AuthContext';
+import { TEST_MODE } from '../../utils/testMode';
 import { colors, spacing, typography } from '../../utils/theme';
 
 const sections = [
@@ -9,22 +13,51 @@ const sections = [
   { title: 'Ready for Pickup', status: 'Ready for Pickup' },
   { title: 'Out for Delivery', status: 'Out for Delivery' },
   { title: 'Completed', status: 'Completed' },
+  { title: 'Cancelled', status: 'Cancelled' },
 ];
 
 export default function VendorOrdersScreen({ navigation }) {
+  const { currentUser, userProfile } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (TEST_MODE) {
+      setOrders(vendorOrders);
+      setLoading(false);
+      return;
+    }
+    const unsubscribe = onVendorOrders(
+      userProfile?.uid || currentUser?.uid,
+      (list) => {
+        setOrders(list);
+        setLoading(false);
+      }
+    );
+    return unsubscribe;
+  }, [currentUser?.uid, userProfile?.uid]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingWrap}>
+        <Text style={styles.empty}>Loading orders…</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
       {sections.map((section) => {
-        const orders = vendorOrders.filter((order) => order.status === section.status);
+        const filtered = orders.filter((order) => order.status === section.status);
         return (
           <View key={section.title} style={styles.section}>
             <Text style={styles.sectionTitle}>
-              {section.title} ({orders.length})
+              {section.title} ({filtered.length})
             </Text>
-            {orders.length === 0 ? (
+            {filtered.length === 0 ? (
               <Text style={styles.empty}>No orders yet</Text>
             ) : (
-              orders.map((order) => (
+              filtered.map((order) => (
                 <OrderCard
                   key={order.id}
                   order={order}
@@ -60,5 +93,11 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textMuted,
     marginBottom: spacing.sm,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
   },
 });

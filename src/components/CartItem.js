@@ -2,11 +2,12 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../utils/theme';
 import ImagePlaceholder from './ImagePlaceholder';
-import { getMasterProductById, resolveProductImage } from '../utils/productCatalogue';
+import { getMasterProductById, getUnitLabel, resolveProductImage } from '../utils/productCatalogue';
 import { formatKES } from '../utils/format';
 
 export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
   const itemTotal = item.pricePerKg * item.quantity;
+  const unitLabel = getUnitLabel(item.unit || 'kg');
 
   const masterProduct = item.masterProductId ? getMasterProductById(item.masterProductId) : null;
   const image = masterProduct ? resolveProductImage(masterProduct) : null;
@@ -16,26 +17,26 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
       {image ? (
         <Image source={image} style={styles.image} resizeMode="cover" />
       ) : (
-        <ImagePlaceholder icon="basket-outline" iconSize={26} style={styles.image} />
+        <ImagePlaceholder icon="basket-outline" iconSize={20} style={styles.image} />
       )}
       <View style={styles.body}>
         <View style={styles.topRow}>
           <View style={styles.titleWrap}>
             <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.price}>{formatKES(item.pricePerKg)} / kg</Text>
+            <Text style={styles.price}>{formatKES(item.pricePerKg)} / {unitLabel}</Text>
           </View>
           <TouchableOpacity activeOpacity={0.7} onPress={onRemove} hitSlop={8}>
-            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+            <Ionicons name="trash-outline" size={17} color={colors.danger} />
           </TouchableOpacity>
         </View>
         <View style={styles.bottomRow}>
           <View style={styles.stepper}>
             <TouchableOpacity activeOpacity={0.7} onPress={onDecrease} style={styles.stepBtn}>
-              <Ionicons name="remove" size={15} color={colors.text} />
+              <Ionicons name="remove" size={14} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.stepValue}>{item.quantity} kg</Text>
+            <Text style={styles.stepValue}>{item.quantity} {unitLabel}</Text>
             <TouchableOpacity activeOpacity={0.7} onPress={onIncrease} style={styles.stepBtn}>
-              <Ionicons name="add" size={15} color={colors.text} />
+              <Ionicons name="add" size={14} color={colors.text} />
             </TouchableOpacity>
           </View>
           <Text style={styles.total}>{formatKES(itemTotal)}</Text>
@@ -48,21 +49,22 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.md,
-    overflow: 'hidden',
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
   },
   image: {
-    width: 88,
-    alignSelf: 'stretch',
-    borderRadius: 0,
+    width: 60,
+    height: 60,
+    borderRadius: radius.sm,
   },
   body: {
     flex: 1,
-    padding: spacing.md,
+    marginLeft: spacing.sm,
   },
   topRow: {
     flexDirection: 'row',
@@ -74,20 +76,20 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   name: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },
   price: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   stepper: {
     flexDirection: 'row',
@@ -97,18 +99,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   stepBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   stepValue: {
-    minWidth: 44,
+    minWidth: 42,
     textAlign: 'center',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.text,
   },
   total: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.primaryDark,
   },

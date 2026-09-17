@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImagePlaceholder from '../../components/ImagePlaceholder';
 import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { MASTER_PRODUCTS } from '../../services/masterProducts';
+import { onStoreProducts } from '../../services/productService';
 import { getActiveCategories, getMasterProductById, getUnitLabel, resolveProductImage } from '../../utils/productCatalogue';
 import { getStoreById } from '../../services/mockData';
-import { vendorCanManageStore } from '../../utils/testMode';
+import { ensureVendorStore } from '../../services/storeService';
+import { TEST_MODE, vendorCanManageStore } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
@@ -17,14 +19,39 @@ import { formatKES } from '../../utils/format';
 // subscription-protected action: unsubscribed vendors are routed to the
 // existing Subscription screen when they tap Add.
 export default function VendorProductsScreen({ navigation }) {
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
+  const storeId = currentUser?.uid;
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState(null);
+  const [storeProducts, setStoreProducts] = useState([]);
 
   const canManageStore = vendorCanManageStore(userProfile);
 
-  const store = canManageStore ? getStoreById('store-1') : null;
-  const storeProducts = store?.products || [];
+  useEffect(() => {
+    if (TEST_MODE) {
+      const store = getStoreById('store-1');
+      setStoreProducts(store?.products || []);
+      return () => {};
+    }
+    if (!storeId) return () => {};
+    ensureVendorStore({
+      ownerUid: storeId,
+      vendorName: userProfile?.fullName || '',
+      name: userProfile?.storeName || '',
+      phone: userProfile?.phone || '',
+      profilePhoto: userProfile?.profilePhoto || null,
+    }).catch((error) => {
+      console.warn('[store] ensureVendorStore failed on VendorProductsScreen', {
+        role: 'vendor',
+        operation: 'ensureVendorStore',
+        collection: 'stores',
+        path: `stores/${storeId}`,
+        code: error?.code,
+        message: error?.message,
+      });
+    });
+    return onStoreProducts(storeId, setStoreProducts);
+  }, [storeId]);
 
   const categories = getActiveCategories();
 

@@ -1,29 +1,54 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing, typography } from '../utils/theme';
+import { getProfilePhotoUrl } from '../services/profilePhotoService';
 import ImagePlaceholder from './ImagePlaceholder';
 
-export default function StoreCard({ store, onPress, imageWidth }) {
+export default function StoreCard({ store, onPress }) {
+  const [photoError, setPhotoError] = useState(false);
+  const photoUri = getProfilePhotoUrl(store.profilePhoto);
+
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.card}>
-      <ImagePlaceholder
-        icon="storefront-outline"
-        iconSize={34}
-        style={[styles.image, imageWidth ? { width: imageWidth } : null]}
-      />
+      {photoUri && !photoError ? (
+        <Image
+          source={{ uri: photoUri }}
+          style={styles.image}
+          onError={() => setPhotoError(true)}
+        />
+      ) : (
+        <ImagePlaceholder
+          icon="storefront-outline"
+          iconSize={26}
+          style={styles.image}
+        />
+      )}
       <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={1}>{store.name}</Text>
-        <View style={styles.metaRow}>
-          <Ionicons name="location-outline" size={13} color={colors.textMuted} />
-          <Text style={styles.meta} numberOfLines={1}>{store.location}</Text>
-        </View>
-        <View style={styles.metaRow}>
-          <Ionicons name="star" size={13} color={colors.accent} />
-          <Text style={styles.meta}>{store.rating} rating</Text>
-          <Text style={styles.dot}>•</Text>
-          <Text style={[styles.meta, { color: store.status === 'Open' ? colors.success : colors.danger }]}>
+        <View style={styles.titleRow}>
+          <Text style={styles.name} numberOfLines={1}>{store.name}</Text>
+          <Text
+            style={[
+              styles.status,
+              { color: store.status === 'Open' ? colors.success : colors.danger },
+            ]}
+            numberOfLines={1}
+          >
             {store.status}
           </Text>
+        </View>
+        {store.vendorName ? (
+          <Text style={styles.vendor} numberOfLines={1}>by {store.vendorName}</Text>
+        ) : null}
+        <View style={styles.metaRow}>
+          <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+          <Text style={styles.meta} numberOfLines={1}>
+            {store.location || 'Location not provided'}
+          </Text>
+        </View>
+        <View style={styles.metaRow}>
+          <Ionicons name="star" size={12} color={colors.accent} />
+          <Text style={styles.meta}>{store.rating} rating</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -32,22 +57,41 @@ export default function StoreCard({ store, onPress, imageWidth }) {
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    overflow: 'hidden',
+    padding: spacing.md,
     ...shadow,
   },
   image: {
-    width: '100%',
-    height: 110,
-    borderRadius: 0,
+    width: 60,
+    height: 60,
+    borderRadius: radius.md,
+    marginRight: spacing.md,
   },
   body: {
-    padding: spacing.md,
+    flex: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   name: {
     ...typography.subtitle,
-    marginBottom: spacing.xs,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  status: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  vendor: {
+    ...typography.bodySmall,
+    marginTop: 2,
   },
   metaRow: {
     flexDirection: 'row',
@@ -56,11 +100,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginLeft: 6,
-  },
-  dot: {
-    color: colors.textMuted,
-    marginHorizontal: 6,
+    marginLeft: 4,
+    flex: 1,
   },
 });

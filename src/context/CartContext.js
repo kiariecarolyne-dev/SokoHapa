@@ -14,7 +14,7 @@ const CartContext = createContext({
 export function CartProvider({ children }) {
   const [items, setItems] = useState([]);
 
-  const addItem = (product, quantity = 1) => {
+  const addItem = (product, quantity = 1, store = null) => {
     setItems((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
@@ -33,6 +33,10 @@ export function CartProvider({ children }) {
           availableQuantity: product.availableQuantity,
           masterProductId: product.masterProductId ?? null,
           unit: product.unit || 'kg',
+          storeId: store?.id ?? product.storeId ?? product.store?.id ?? null,
+          storeName: store?.name ?? product.storeName ?? null,
+          vendorUid: store?.vendorUid ?? product.vendorUid ?? null,
+          vendorName: store?.vendorName ?? product.vendorName ?? null,
           quantity,
         },
       ];

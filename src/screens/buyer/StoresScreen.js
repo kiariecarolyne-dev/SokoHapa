@@ -1,8 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import StoreCard from '../../components/StoreCard';
-import { categories, stores } from '../../services/mockData';
+import { getStoreProducts } from '../../services/productService';
+import { categories as mockCategories, stores as mockStores } from '../../services/mockData';
+import { onActiveStores } from '../../services/storeService';
+import { getActiveCategories } from '../../utils/productCatalogue';
+import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, spacing, typography } from '../../utils/theme';
 
 export default function StoresScreen({ navigation, route }) {
@@ -10,21 +14,96 @@ export default function StoresScreen({ navigation, route }) {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState(initialCategory);
 
+  const [allStores, setAllStores] = useState([]);
+  const [storeProductInfo, setStoreProductInfo] = useState({});
+
+  const categoryOptions = TEST_MODE
+    ? mockCategories
+    : getActiveCategories().map((category) => category.categoryName);
+
+  useEffect(() => {
+    if (TEST_MODE) {
+      setAllStores([]);
+      return () => {};
+    }
+    let active = true;
+    const unsubscribe = onActiveStores((list) => {
+      if (!active) return;
+      setAllStores(list);
+      Promise.all(
+        list.map(async (store) => {
+          let products = [];
+          try {
+            products = await getStoreProducts(store.id);
+          } catch (error) {
+            console.warn('[store] getStoreProducts failed on StoresScreen', {
+              role: 'buyer',
+              operation: 'getStoreProducts',
+              collection: 'stores/{storeId}/products',
+              path: `stores/${store.id}/products`,
+              code: error?.code,
+              message: error?.message,
+            });
+            products = [];
+          }
+          return {
+            storeId: store.id,
+            names: products.map((p) => (p.name || '').toLowerCase()),
+            categories: [...new Set(products.map((p) => p.category))],
+          };
+        })
+      )
+        .then((rows) => {
+          if (!active) return;
+          const map = {};
+          rows.forEach((row) => {
+            map[row.storeId] = row;
+          });
+          setStoreProductInfo(map);
+        })
+        .catch((error) => {
+          console.warn('[store] failed to aggregate store product info on StoresScreen', {
+            role: 'buyer',
+            operation: 'getStoreProducts.map',
+            collection: 'stores/{storeId}/products',
+            code: error?.code,
+            message: error?.message,
+          });
+        });
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   const filtered = useMemo(() => {
-    return stores.filter((store) => {
+    const term = search.trim().toLowerCase();
+    if (TEST_MODE) {
+      return mockStores.filter((store) => {
+        const matchesSearch =
+          !term ||
+          store.name.toLowerCase().includes(term) ||
+          store.location.toLowerCase().includes(term) ||
+          store.products.some((p) => p.name.toLowerCase().includes(term));
+        const matchesCategory =
+          !activeCategory ||
+          store.products.some((p) => p.category === activeCategory);
+        return matchesSearch && matchesCategory;
+      });
+    }
+    return allStores.filter((store) => {
+      const info = storeProductInfo[store.id];
+      const storeText = (store.name || '').toLowerCase();
+      const locationText = (store.location || '').toLowerCase();
+      const productHits = info ? info.names.some((name) => name.includes(term)) : false;
       const matchesSearch =
-        !search ||
-        store.name.toLowerCase().includes(search.toLowerCase()) ||
-        store.location.toLowerCase().includes(search.toLowerCase()) ||
-        store.products.some((p) => p.name.toLowerCase().includes(search.toLowerCase()));
-
+        !term || storeText.includes(term) || locationText.includes(term) || productHits;
       const matchesCategory =
-        !activeCategory ||
-        store.products.some((p) => p.category === activeCategory);
-
+        !activeCategory || (info ? info.categories.includes(activeCategory) : false);
       return matchesSearch && matchesCategory;
     });
-  }, [search, activeCategory]);
+  }, [search, activeCategory, allStores, storeProductInfo]);
 
   const cycleFilter = () => {
     Alert.alert(
@@ -52,7 +131,7 @@ export default function StoresScreen({ navigation, route }) {
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
-        data={categories}
+        data={categoryOptions}
         keyExtractor={(item) => item}
         contentContainerStyle={styles.chipRow}
         ListHeaderComponent={

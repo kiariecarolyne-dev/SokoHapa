@@ -2,7 +2,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing } from '../utils/theme';
 import StatusBadge from './StatusBadge';
-import { formatKES } from '../utils/format';
+import { formatKES, formatOrderTime } from '../utils/format';
 
 export default function OrderCard({ order, onPress }) {
   return (
@@ -17,7 +17,7 @@ export default function OrderCard({ order, onPress }) {
       <View style={styles.metaRow}>
         <Text style={styles.meta}>{order.items?.length ?? 0} item(s)</Text>
         <Text style={styles.dot}>•</Text>
-        <Text style={styles.meta}>{order.createdAt || order.date}</Text>
+        <Text style={styles.meta}>{formatOrderTime(order.createdAt || order.date)}</Text>
       </View>
       <View style={styles.bottomRow}>
         <Text style={styles.total}>{formatKES(order.total || order.deliveryFee)}</Text>

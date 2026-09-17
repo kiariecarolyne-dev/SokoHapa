@@ -1,11 +1,14 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
 import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { currentVendor } from '../../services/mockData';
-import { TEST_MODE } from '../../utils/testMode';
+import { getProfilePhotoUrl } from '../../services/profilePhotoService';
+import { ensureVendorStore } from '../../services/storeService';
+import { TEST_MODE, isVendorSubscribed } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 const menu = [
@@ -18,7 +21,40 @@ const menu = [
 ];
 
 export default function VendorDashboardScreen({ navigation }) {
-  const { userRole, logout } = useAuth();
+  const { userRole, userProfile, currentUser, logout } = useAuth();
+  const profilePhoto = getProfilePhotoUrl(userProfile?.profilePhoto);
+  const vendorDisplay = TEST_MODE
+    ? currentVendor
+    : {
+        fullName: userProfile?.fullName || 'Vendor',
+        storeName: userProfile?.storeName || 'My Store',
+      };
+
+  const subscribed = isVendorSubscribed(userProfile);
+
+  useEffect(() => {
+    if (TEST_MODE || !userProfile) return;
+    const storeId = currentUser?.uid;
+    if (!storeId) return;
+    ensureVendorStore({
+      ownerUid: storeId,
+      vendorName: userProfile.fullName || '',
+      name: userProfile.storeName || '',
+      phone: userProfile.phone || '',
+      location: userProfile.storeLocation || '',
+      description: userProfile.storeDescription || '',
+      profilePhoto: userProfile.profilePhoto || null,
+    }).catch((error) => {
+      console.warn('[store] ensureVendorStore failed on VendorDashboardScreen', {
+        role: 'vendor',
+        operation: 'ensureVendorStore',
+        collection: 'stores',
+        path: `stores/${storeId}`,
+        code: error?.code,
+        message: error?.message,
+      });
+    });
+  }, [userProfile, currentUser]);
 
   return (
     <View style={styles.container}>
@@ -41,24 +77,40 @@ export default function VendorDashboardScreen({ navigation }) {
         ) : null}
         <View style={styles.welcomeCard}>
           <View style={styles.avatar}>
-            <Ionicons name="person-outline" size={26} color={colors.white} />
+            {profilePhoto ? (
+              <Image source={{ uri: profilePhoto }} style={styles.avatarImage} />
+            ) : (
+              <Ionicons name="person-outline" size={26} color={colors.white} />
+            )}
           </View>
           <View style={styles.welcomeText}>
-            <Text style={styles.welcomeTitle}>Karibu, {currentVendor.fullName.split(' ')[0]}</Text>
-            <Text style={styles.welcomeStore}>{currentVendor.storeName}</Text>
+            <Text style={styles.welcomeTitle}>Karibu, {vendorDisplay.fullName.split(' ')[0]}</Text>
+            <Text style={styles.welcomeStore}>{vendorDisplay.storeName}</Text>
           </View>
-          <StatusBadge label="Inactive" />
+          <StatusBadge label={subscribed ? 'Active' : 'Inactive'} />
         </View>
 
-        <View style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Subscription: Inactive</Text>
-            <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+        {subscribed ? (
+          <View style={styles.activeStatusCard}>
+            <View style={styles.statusRow}>
+              <Text style={styles.activeStatusLabel}>Subscription: Active</Text>
+              <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
+            </View>
+            <Text style={styles.activeStatusHint}>
+              Your store is active. You can add products and receive orders.
+            </Text>
           </View>
-          <Text style={styles.statusHint}>
-            Subscribe to start selling products and receiving orders.
-          </Text>
-        </View>
+        ) : (
+          <View style={styles.statusCard}>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Subscription: Inactive</Text>
+              <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+            </View>
+            <Text style={styles.statusHint}>
+              Subscribe to start selling products and receiving orders.
+            </Text>
+          </View>
+        )}
 
         <Text style={styles.sectionTitle}>Manage</Text>
         <View style={styles.grid}>
@@ -121,6 +173,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
   },
   welcomeText: {
     flex: 1,
@@ -152,6 +209,24 @@ const styles = StyleSheet.create({
   statusHint: {
     ...typography.bodySmall,
     color: colors.warning,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  activeStatusCard: {
+    backgroundColor: colors.successLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  activeStatusLabel: {
+    ...typography.subtitle,
+    fontSize: 14,
+    color: colors.success,
+    marginRight: spacing.sm,
+  },
+  activeStatusHint: {
+    ...typography.bodySmall,
+    color: colors.success,
     marginTop: 4,
     lineHeight: 18,
   },

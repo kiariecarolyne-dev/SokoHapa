@@ -7,10 +7,11 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { auth, db } from '../services/firebase';
+import { setRuntimeRole } from '../services/listenerLogging';
 
 const VALID_ROLES = ['buyer', 'vendor', 'delivery'];
 
@@ -28,7 +29,7 @@ const AuthContext = createContext({
   resetPassword: async () => {},
 });
 
-async function fetchUserProfile(uid) {
+export async function fetchUserProfile(uid) {
   const docRef = doc(db, 'users', uid);
   const snapshot = await getDoc(docRef);
   return snapshot.exists() ? snapshot.data() : null;
@@ -69,14 +70,17 @@ export function AuthProvider({ children }) {
           if (profile && VALID_ROLES.includes(role)) {
             setUserProfile(profile);
             setUserRole(role);
+            setRuntimeRole(role);
           } else {
             // No profile document or invalid role: there is no valid
             // dashboard to show, so end the session cleanly.
+            setRuntimeRole(null);
             setUserProfile(null);
             setUserRole(null);
             await signOut(auth);
           }
         } catch (error) {
+          setRuntimeRole(null);
           setUserProfile(null);
           setUserRole(null);
         } finally {
@@ -84,6 +88,7 @@ export function AuthProvider({ children }) {
           setAuthInitialized(true);
         }
       } else {
+        setRuntimeRole(null);
         setUserProfile(null);
         setUserRole(null);
         setProfileLoading(false);
@@ -93,6 +98,38 @@ export function AuthProvider({ children }) {
 
     return unsubscribe;
   }, []);
+
+  // Keep the Firestore profile live so subscription changes made by the
+  // backend (M-Pesa callback / dev test endpoints) propagate to every screen
+  // (e.g. the Product gates) without a login/logout cycle.
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    const unsub = onSnapshot(
+      doc(db, 'users', currentUser.uid),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const next = snapshot.data();
+        setUserProfile((prev) =>
+          next && prev && prev.uid === next.uid ? { ...prev, ...next } : next
+        );
+        const role = next.role;
+        if (role && VALID_ROLES.includes(role)) {
+          setUserRole(role);
+          setRuntimeRole(role);
+        }
+      },
+      (error) => {
+        console.warn('[auth] user profile snapshot error', {
+          operation: 'onSnapshot',
+          collection: 'users',
+          path: `users/${currentUser.uid}`,
+          code: error?.code,
+          message: error?.message,
+        });
+      }
+    );
+    return unsub;
+  }, [currentUser?.uid]);
 
   const login = async (email, password) => {
     const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -110,6 +147,15 @@ export function AuthProvider({ children }) {
       error.code = 'invalid-role';
       throw error;
     }
+
+    setRuntimeRole(profile.role);
+    console.log(
+      `[FIREBASE AUTH] ${JSON.stringify({
+        uid: credential.user.uid,
+        email: credential.user.email,
+        role: profile.role,
+      })}`
+    );
 
     return { user: credential.user, profile, role: profile.role };
   };
@@ -176,6 +222,7 @@ export function AuthProvider({ children }) {
       setCurrentUser(null);
       setUserProfile(null);
       setUserRole(null);
+      setRuntimeRole(null);
       setProfileLoading(false);
       setAuthInitialized(true);
     }

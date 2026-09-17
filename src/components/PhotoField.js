@@ -1,21 +1,29 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../utils/theme';
 import ImagePlaceholder from './ImagePlaceholder';
 
-export default function PhotoField({ label, value, icon = 'person-outline', onPress }) {
+export default function PhotoField({ label, value, icon = 'person-outline', onPress, hint }) {
+  const hasImage = typeof value === 'string' && value.length > 0;
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
       <TouchableOpacity activeOpacity={0.8} style={styles.row} onPress={onPress}>
-        {value ? (
+        {hasImage ? (
+          <Image source={{ uri: value }} style={styles.thumb} />
+        ) : value ? (
           <ImagePlaceholder icon="checkmark" iconSize={22} backgroundColor={colors.successLight} iconColor={colors.success} style={styles.thumb} />
         ) : (
           <ImagePlaceholder icon={icon} iconSize={26} style={styles.thumb} />
         )}
         <View style={styles.textWrap}>
-          <Text style={styles.title}>{value ? 'Photo selected' : 'Add a photo'}</Text>
-          <Text style={styles.hint}>Uploads are not connected yet — placeholder only</Text>
+          <Text style={styles.title}>
+            {hasImage ? 'Photo selected' : value ? 'Photo selected' : 'Add a photo'}
+          </Text>
+          <Text style={styles.hint}>
+            {hasImage ? 'Tap to replace photo' : hint || 'Uploads are not connected yet — placeholder only'}
+          </Text>
         </View>
         <Ionicons name="camera-outline" size={22} color={colors.primary} />
       </TouchableOpacity>

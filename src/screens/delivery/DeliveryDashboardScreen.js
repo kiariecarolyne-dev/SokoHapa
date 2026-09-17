@@ -1,43 +1,144 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AppHeader from '../../components/AppHeader';
 import { useAuth } from '../../context/AuthContext';
 import { currentDeliveryProfile } from '../../services/mockData';
+import {
+  onActiveDelivery,
+  onDeliveryHistory,
+  onPendingDeliveryRequests,
+  setDeliveryAvailability,
+} from '../../services/deliveryService';
+import { TEST_MODE } from '../../utils/testMode';
+import { getProfilePhotoUrl } from '../../services/profilePhotoService';
 import { getVehicleIcon, getVehicleLabel } from '../../utils/vehicleTypes';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function DeliveryDashboardScreen({ navigation }) {
-  const { userRole, logout } = useAuth();
+  const { currentUser, userRole, userProfile, logout } = useAuth();
   const [available, setAvailable] = useState(true);
+  const [requestsCount, setRequestsCount] = useState(0);
+  const [hasActive, setHasActive] = useState(false);
+  const [activeSubtitle, setActiveSubtitle] = useState('No active delivery');
+  const [historyCount, setHistoryCount] = useState(0);
+  const profilePhoto = getProfilePhotoUrl(userProfile?.profilePhoto);
 
-  const cards = [
-    {
-      key: 'Requests',
-      title: 'New Requests',
-      subtitle: '3 waiting',
-      icon: 'bell-outline',
-      navigate: 'Requests',
-      count: 3,
-    },
-    {
-      key: 'Active',
-      title: 'Active Delivery',
-      subtitle: 'SH-1045',
-      icon: 'motorbike',
-      navigate: 'ActiveDelivery',
-      count: 1,
-    },
-    {
-      key: 'History',
-      title: 'Completed Deliveries',
-      subtitle: '3 trips so far',
-      icon: 'check-circle-outline',
-      navigate: 'History',
-      count: 3,
-    },
-  ];
+  useEffect(() => {
+    if (userProfile?.availability === 'Unavailable' || userProfile?.availability === 'Busy') {
+      setAvailable(false);
+    } else if (userProfile?.availability === 'Available') {
+      setAvailable(true);
+    }
+  }, [userProfile?.availability]);
+
+  useEffect(() => {
+    if (TEST_MODE) return undefined;
+    const uid = userProfile?.uid || currentUser?.uid;
+    if (!uid) return undefined;
+
+    const offRequests = onPendingDeliveryRequests(uid, (list) => {
+      setRequestsCount(list.length);
+    });
+    const offActive = onActiveDelivery(uid, (next) => {
+      setHasActive(Boolean(next));
+      setActiveSubtitle(next?.orderNumber ? `Order ${next.orderNumber}` : 'Active');
+    });
+    const offHistory = onDeliveryHistory(uid, (list) => {
+      setHistoryCount(list.length);
+    });
+
+    return () => {
+      offRequests();
+      offActive();
+      offHistory();
+    };
+  }, [currentUser?.uid, userProfile?.uid]);
+
+  const toggleAvailability = async () => {
+    const next = !available;
+    setAvailable(next);
+    if (TEST_MODE) return;
+    const uid = userProfile?.uid || currentUser?.uid;
+    if (!uid) return;
+    try {
+      await setDeliveryAvailability(uid, next ? 'Available' : 'Unavailable');
+    } catch (error) {
+      console.warn('[auth] setDeliveryAvailability failed on DeliveryDashboardScreen', {
+        role: 'delivery',
+        operation: 'setDeliveryAvailability',
+        collection: 'users',
+        path: `users/${uid}`,
+        targetAvailability: next ? 'Available' : 'Unavailable',
+        code: error?.code,
+        message: error?.message,
+      });
+      setAvailable(!next);
+    }
+  };
+
+  const vehicleType = TEST_MODE
+    ? currentDeliveryProfile.vehicleType
+    : userProfile?.vehicleType || 'motorcycle';
+
+  const plateNumber = TEST_MODE
+    ? currentDeliveryProfile.plateNumber
+    : userProfile?.vehiclePlateNumber || '';
+
+  const cards = TEST_MODE
+    ? [
+        {
+          key: 'Requests',
+          title: 'New Requests',
+          subtitle: '3 waiting',
+          icon: 'bell-outline',
+          navigate: 'Requests',
+          count: 3,
+        },
+        {
+          key: 'Active',
+          title: 'Active Delivery',
+          subtitle: 'SH-1045',
+          icon: 'motorbike',
+          navigate: 'ActiveDelivery',
+          count: 1,
+        },
+        {
+          key: 'History',
+          title: 'Completed Deliveries',
+          subtitle: '3 trips so far',
+          icon: 'check-circle-outline',
+          navigate: 'History',
+          count: 3,
+        },
+      ]
+    : [
+        {
+          key: 'Requests',
+          title: 'New Requests',
+          subtitle: requestsCount === 0 ? 'Nothing waiting' : `${requestsCount} waiting`,
+          icon: 'bell-outline',
+          navigate: 'Requests',
+          count: requestsCount,
+        },
+        {
+          key: 'Active',
+          title: 'Active Delivery',
+          subtitle: activeSubtitle,
+          icon: 'motorbike',
+          navigate: 'ActiveDelivery',
+          count: hasActive ? 1 : 0,
+        },
+        {
+          key: 'History',
+          title: 'Completed Deliveries',
+          subtitle: `${historyCount} trip${historyCount === 1 ? '' : 's'} so far`,
+          icon: 'check-circle-outline',
+          navigate: 'History',
+          count: historyCount,
+        },
+      ];
 
   return (
     <View style={styles.container}>
@@ -62,7 +163,7 @@ export default function DeliveryDashboardScreen({ navigation }) {
             </View>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => setAvailable((v) => !v)}
+              onPress={toggleAvailability}
               style={[styles.toggle, { backgroundColor: available ? colors.success : colors.warning }]}
             >
               <Text style={styles.toggleText}>{available ? 'Unavailable' : 'Available'}</Text>
@@ -98,7 +199,11 @@ export default function DeliveryDashboardScreen({ navigation }) {
           onPress={() => navigation.navigate('Profile')}
         >
           <View style={styles.cardIcon}>
-            <Ionicons name="person-circle-outline" size={26} color={colors.primary} />
+            {profilePhoto ? (
+              <Image source={{ uri: profilePhoto }} style={styles.avatarImage} />
+            ) : (
+              <Ionicons name="person-circle-outline" size={26} color={colors.primary} />
+            )}
           </View>
           <View style={styles.cardBody}>
             <Text style={styles.cardTitle}>Profile</Text>
@@ -109,12 +214,12 @@ export default function DeliveryDashboardScreen({ navigation }) {
 
         <View style={styles.vehicleCard}>
           <MaterialCommunityIcons
-            name={getVehicleIcon(currentDeliveryProfile.vehicleType)}
+            name={getVehicleIcon(vehicleType)}
             size={20}
             color={colors.primary}
           />
           <Text style={styles.vehicleText}>
-            {getVehicleLabel(currentDeliveryProfile.vehicleType)}: {currentDeliveryProfile.plateNumber}
+            {getVehicleLabel(vehicleType)}: {plateNumber}
           </Text>
         </View>
       </ScrollView>
@@ -192,6 +297,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.round,
   },
   cardBody: {
     flex: 1,

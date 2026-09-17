@@ -5,14 +5,17 @@ import TextField from '../../components/TextField';
 import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
+import { addCustomProductToStore, addMasterProductToStore } from '../../services/productService';
 import {
   PRODUCT_UNIT_OPTIONS,
+  getActiveCategories,
   getMasterProductById,
   getUnitLabel,
   resolveProductImage,
 } from '../../utils/productCatalogue';
-import { addProductToVendorStore, categories } from '../../services/mockData';
-import { vendorCanManageStore } from '../../utils/testMode';
+import { categories, addProductToVendorStore } from '../../services/mockData';
+import { ensureVendorStore } from '../../services/storeService';
+import { TEST_MODE, vendorCanManageStore } from '../../utils/testMode';
 import { colors, radius, spacing, typography } from '../../utils/theme';
 
 // Adds a product to the vendor's own store. When opened with a master product
@@ -20,17 +23,19 @@ import { colors, radius, spacing, typography } from '../../utils/theme';
 // via masterProductId; the master catalogue itself is never modified. Adding
 // products is a subscription-protected action (see TEST_MODE gating below).
 export default function AddProductScreen({ navigation, route }) {
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
+  const storeId = currentUser?.uid;
 
   const masterProductId = route?.params?.masterProductId;
   const master = masterProductId ? getMasterProductById(masterProductId) : null;
 
+  const categoryOptions = TEST_MODE ? categories : getActiveCategories().map((c) => c.categoryName);
   const unitOptions = master
     ? master.availableUnits
     : PRODUCT_UNIT_OPTIONS.map((option) => option.code);
 
   const [name, setName] = useState(master ? master.displayName : '');
-  const [category, setCategory] = useState(master ? master.categoryName : categories[0]);
+  const [category, setCategory] = useState(master ? master.categoryName : (categoryOptions[0] ?? 'Other'));
   const [priceText, setPriceText] = useState('');
   const [quantityText, setQuantityText] = useState('');
   const [unit, setUnit] = useState(master ? master.defaultUnit : 'kg');
@@ -57,7 +62,7 @@ export default function AddProductScreen({ navigation, route }) {
     }
   }, []);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!canManageStore) {
       requireSubscription();
       return;
@@ -76,40 +81,86 @@ export default function AddProductScreen({ navigation, route }) {
       return;
     }
 
-    const record = master
-      ? {
-          id: master.productId,
-          name: master.displayName,
-          category: master.categoryName,
-          pricePerKg: price,
-          availableQuantity: quantity,
-          available,
-          description: `${master.nameEnglish} (${master.nameSwahili})`,
-          masterProductId: master.productId,
-          unit,
-          isAvailable: available,
-        }
-      : {
-          id: `custom-${Date.now()}`,
-          name: name.trim(),
-          category,
-          pricePerKg: price,
-          availableQuantity: quantity,
-          available,
-          description: name.trim(),
-          masterProductId: null,
-          unit,
-          isAvailable: available,
-        };
+    if (TEST_MODE) {
+      const record = master
+        ? {
+            id: master.productId,
+            name: master.displayName,
+            category: master.categoryName,
+            pricePerKg: price,
+            availableQuantity: quantity,
+            available,
+            description: `${master.nameEnglish} (${master.nameSwahili})`,
+            masterProductId: master.productId,
+            unit,
+            isAvailable: available,
+          }
+        : {
+            id: `custom-${Date.now()}`,
+            name: name.trim(),
+            category,
+            pricePerKg: price,
+            availableQuantity: quantity,
+            available,
+            description: name.trim(),
+            masterProductId: null,
+            unit,
+            isAvailable: available,
+          };
 
-    const added = addProductToVendorStore('store-1', record);
-    Alert.alert(
-      added ? 'Product Added' : 'Already in Store',
-      added
-        ? `${record.name} has been added to your store.`
-        : `${record.name} is already in your store.`,
-      added ? [{ text: 'OK', onPress: () => navigation.goBack() }] : [{ text: 'OK' }]
-    );
+      const added = addProductToVendorStore('store-1', record);
+      Alert.alert(
+        added ? 'Product Added' : 'Already in Store',
+        added
+          ? `${record.name} has been added to your store.`
+          : `${record.name} is already in your store.`,
+        added ? [{ text: 'OK', onPress: () => navigation.goBack() }] : [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!storeId) {
+      Alert.alert('Signed out', 'Please sign in to add products to your store.');
+      return;
+    }
+
+    const displayName = master?.displayName ?? name.trim();
+    try {
+      await ensureVendorStore({
+        ownerUid: storeId,
+        vendorName: userProfile?.fullName || '',
+        name: userProfile?.storeName || '',
+        phone: userProfile?.phone || '',
+        profilePhoto: userProfile?.profilePhoto || null,
+      });
+      const result = master
+        ? await addMasterProductToStore({
+            storeId,
+            masterProductId: master.productId,
+            price,
+            unit,
+            availableQuantity: quantity,
+            isAvailable: available,
+          })
+        : await addCustomProductToStore({
+            storeId,
+            nameEnglish: name.trim(),
+            price,
+            unit,
+            availableQuantity: quantity,
+            isAvailable: available,
+          });
+      const added = result !== null;
+      Alert.alert(
+        added ? 'Product Added' : 'Already in Store',
+        added
+          ? `${displayName} has been added to your store.`
+          : `${displayName} is already in your store.`,
+        added ? [{ text: 'OK', onPress: () => navigation.goBack() }] : [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert('Add Failed', 'Could not add the product. Please try again.');
+    }
   };
 
   return (
@@ -141,7 +192,7 @@ export default function AddProductScreen({ navigation, route }) {
               />
               <Text style={styles.label}>Category</Text>
               <View style={styles.chipRow}>
-                {categories.map((cat) => {
+                {categoryOptions.map((cat) => {
                   const active = category === cat;
                   return (
                     <View key={cat}>

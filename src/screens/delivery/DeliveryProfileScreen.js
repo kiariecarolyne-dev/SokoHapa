@@ -1,15 +1,79 @@
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import ImagePlaceholder from '../../components/ImagePlaceholder';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
 import { currentDeliveryProfile } from '../../services/mockData';
+import { getProfilePhotoUrl, uploadProfilePhoto } from '../../services/profilePhotoService';
 import { getVehicleIcon, getVehicleLabel } from '../../utils/vehicleTypes';
+import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function DeliveryProfileScreen() {
-  const { logout } = useAuth();
+  const { currentUser, userProfile, logout } = useAuth();
+  const [photoPath, setPhotoPath] = useState(userProfile?.profilePhoto ?? null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleChangePhoto = async () => {
+    if (uploading) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Allow photo access to choose a profile picture.');
+      return;
+    }
+
+    let result;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+    } catch (error) {
+      console.error('[profilePhoto] Image picker failed', error?.message ?? error);
+      Alert.alert('Error', 'Could not open the photo library.');
+      return;
+    }
+
+    if (result.canceled) return;
+
+    if (!currentUser) {
+      Alert.alert('Signed out', 'Sign in again to change your profile photo.');
+      return;
+    }
+
+    const asset = result.assets[0];
+    if (!asset?.base64) {
+      console.error('[profilePhoto] Picker did not return base64 image data');
+      Alert.alert('Upload failed', 'Could not read the selected image. Please try another photo.');
+      return;
+    }
+
+    console.info('[profilePhoto] Image selected', {
+      size: asset.fileSize,
+      mimeType: asset.mimeType,
+    });
+
+    setUploading(true);
+    try {
+      const path = await uploadProfilePhoto(currentUser.uid, asset.base64);
+      setPhotoPath(path);
+    } catch (error) {
+      console.error('[profilePhoto] Upload failed with error', error?.message ?? error);
+      Alert.alert(
+        'Upload failed',
+        'Your previous photo is still in place. Please try again.'
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -19,22 +83,48 @@ export default function DeliveryProfileScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
-          <ImagePlaceholder icon="person-outline" iconSize={52} style={styles.avatar} />
-          <Text style={styles.name}>{currentDeliveryProfile.fullName}</Text>
+          <TouchableOpacity onPress={handleChangePhoto} activeOpacity={0.85}>
+            {photoPath ? (
+              <Image source={{ uri: getProfilePhotoUrl(photoPath) }} style={styles.avatar} />
+            ) : (
+              <ImagePlaceholder icon="person-outline" iconSize={52} style={styles.avatar} />
+            )}
+            <View style={styles.cameraBadge}>
+              <MaterialCommunityIcons name="camera" size={14} color={colors.white} />
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.name}>
+            {TEST_MODE ? currentDeliveryProfile.fullName : userProfile?.fullName || 'Delivery Partner'}
+          </Text>
+          <Text style={styles.hint}>
+            {uploading ? 'Uploading photo…' : 'Tap the camera to change your photo'}
+          </Text>
         </View>
 
         <View style={styles.card}>
-          <ProfileRow icon="phone-outline" label="Phone" value={currentDeliveryProfile.phone} />
-          <View style={styles.divider} />
-          <ProfileRow icon="email-outline" label="Email" value={currentDeliveryProfile.email} />
-          <View style={styles.divider} />
           <ProfileRow
-            icon={getVehicleIcon(currentDeliveryProfile.vehicleType)}
-            label="Vehicle Type"
-            value={getVehicleLabel(currentDeliveryProfile.vehicleType)}
+            icon="phone-outline"
+            label="Phone"
+            value={TEST_MODE ? currentDeliveryProfile.phone : userProfile?.phone || '—'}
           />
           <View style={styles.divider} />
-          <ProfileRow icon="car-outline" label="Number Plate" value={currentDeliveryProfile.plateNumber} />
+          <ProfileRow
+            icon="email-outline"
+            label="Email"
+            value={TEST_MODE ? currentDeliveryProfile.email : userProfile?.email || '—'}
+          />
+          <View style={styles.divider} />
+          <ProfileRow
+            icon={getVehicleIcon(TEST_MODE ? currentDeliveryProfile.vehicleType : userProfile?.vehicleType || 'motorcycle')}
+            label="Vehicle Type"
+            value={getVehicleLabel(TEST_MODE ? currentDeliveryProfile.vehicleType : userProfile?.vehicleType || 'motorcycle')}
+          />
+          <View style={styles.divider} />
+          <ProfileRow
+            icon="car-outline"
+            label="Number Plate"
+            value={TEST_MODE ? currentDeliveryProfile.plateNumber : userProfile?.vehiclePlateNumber || '—'}
+          />
         </View>
 
         <PrimaryButton
@@ -86,9 +176,27 @@ const styles = StyleSheet.create({
     borderRadius: radius.round,
     marginBottom: spacing.md,
   },
+  cameraBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: spacing.md,
+    width: 28,
+    height: 28,
+    borderRadius: radius.round,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
   name: {
     ...typography.title,
     fontSize: 22,
+  },
+  hint: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: 4,
   },
   card: {
     backgroundColor: colors.surface,

@@ -1,0 +1,690 @@
+// SokoHapa - production Cloud Firestore security rules
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUid() {
+      return request.auth.uid;
+    }
+
+    function orderData(orderId) {
+      let p = /databases/$(database)/documents/orders/$(orderId);
+      return exists(p) ? get(p).data : null;
+    }
+
+    function storeData(storeId) {
+      let p = /databases/$(database)/documents/stores/$(storeId);
+      return exists(p) ? get(p).data : null;
+    }
+
+    function requestData(requestId) {
+      let p = /databases/$(database)/documents/deliveryRequests/$(requestId);
+      return exists(p) ? get(p).data : null;
+    }
+
+    function assignmentData(orderId) {
+      let p = /databases/$(database)/documents/deliveryAssignments/$(orderId);
+      return exists(p) ? get(p).data : null;
+    }
+
+    function isStoreOwner(storeId) {
+      let s = storeData(storeId);
+      return isSignedIn() &&
+             s != null &&
+             s.ownerUid == currentUid();
+    }
+
+    function isActiveStore(storeId) {
+      let s = storeData(storeId);
+      return isSignedIn() &&
+             s != null &&
+             s.isActive == true;
+    }
+
+    // Allows a delivery partner to update an order only when:
+    // 1. An assignment already exists for that driver, OR
+    // 2. During the initial acceptance, the order points to a
+    //    delivery request belonging to that driver.
+    function driverWritesOnOrder(orderId) {
+      let a = assignmentData(orderId);
+
+      let rid = request.resource.data.deliveryRequestId != null
+        ? request.resource.data.deliveryRequestId
+        : resource.data.deliveryRequestId;
+
+      let r = rid != null ? requestData(rid) : null;
+
+      return
+        (a != null && a.deliveryUid == currentUid()) ||
+        (r != null &&
+         r.deliveryUid == currentUid() &&
+         r.orderId == orderId);
+    }
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{uid} {
+
+      // Users may create only their own profile.
+      allow create: if isSignedIn() &&
+        uid == currentUid() &&
+        request.resource.data.uid == currentUid() &&
+        request.resource.data.role in [
+          'buyer',
+          'vendor',
+          'delivery'
+        ] &&
+        (
+          request.resource.data.role != 'vendor' ||
+          request.resource.data.subscriptionStatus == 'inactive' ||
+          request.resource.data.subscriptionStatus == null
+        );
+
+      // IMPORTANT:
+      // Users can read:
+      // - their own profile
+      // - delivery partner profiles
+      // - vendor profiles
+      //
+      // Buyers need vendor-profile access because StoreScreen loads
+      // the vendor information belonging to a store.
+      allow get: if isSignedIn() &&
+        (
+          uid == currentUid() ||
+          (resource.data != null &&
+           resource.data.role == 'delivery') ||
+          (resource.data != null &&
+           resource.data.role == 'vendor')
+        );
+
+      // Only delivery profiles can be queried as a directory.
+      // This is required by ChooseDeliveryScreen.
+      // NOTE: request.query exposes only limit/offset/orderBy in the rules
+      // engine, so the allowed query is enforced per returned document.
+      allow list: if isSignedIn() &&
+        resource.data != null &&
+        resource.data.role == 'delivery';
+
+      // Users can only update their own profile.
+      // Only these fields may be changed.
+      allow update: if isSignedIn() &&
+        uid == currentUid() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'profilePhoto',
+          'availability',
+          'updatedAt'
+        ]);
+    }
+
+    // ============================================================
+    // STORES
+    // ============================================================
+
+    match /stores/{storeId} {
+
+      // A vendor creates only their own store.
+      // storeId is the vendor UID.
+      allow create: if isSignedIn() &&
+        storeId == currentUid() &&
+        request.resource.data.ownerUid == currentUid() &&
+        request.resource.data.vendorUid == currentUid() &&
+        request.resource.data.storeId == storeId &&
+        request.resource.data.isActive == true;
+
+      // A vendor can read their own store even if the store does not
+      // exist yet. This is important because ensureVendorStore()
+      // first performs getDoc() before creating the store.
+      //
+      // Buyers can read active stores.
+      allow get: if isSignedIn() &&
+        (
+          currentUid() == storeId ||
+          (
+            resource.data != null &&
+            resource.data.isActive == true
+          )
+        );
+
+      // Buyers can list active stores.
+      // Vendors can list their own store.
+      // Enforced per returned document so a query can only ever return
+      // active stores or stores owned by the current user.
+      allow list: if isSignedIn() &&
+        resource.data != null &&
+        (
+          resource.data.isActive == true ||
+          resource.data.ownerUid == currentUid()
+        );
+
+      // Vendor can update only their own store.
+      // Ownership fields cannot be changed.
+      allow update: if isStoreOwner(storeId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name',
+          'description',
+          'location',
+          'phone',
+          'profilePhoto',
+          'vendorName',
+          'status',
+          'rating',
+          'isActive',
+          'updatedAt'
+        ]);
+
+      // Vendor can delete only their own store.
+      allow delete: if isStoreOwner(storeId);
+    }
+
+    // ============================================================
+    // STORE PRODUCTS
+    // ============================================================
+
+    match /stores/{storeId}/products/{productId} {
+
+      // Buyers can read products from active stores.
+      // Vendors can read their own products.
+      allow get, list: if isSignedIn() &&
+        (
+          currentUid() == storeId ||
+          isStoreOwner(storeId) ||
+          isActiveStore(storeId)
+        );
+
+      // Vendor can create products only in their own store.
+      allow create: if isStoreOwner(storeId) &&
+        request.resource.data.storeId == storeId &&
+        request.resource.data.productId == productId;
+
+      // Vendor can update only permitted product fields.
+      allow update: if isStoreOwner(storeId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'price',
+          'pricePerKg',
+          'unit',
+          'isAvailable',
+          'available',
+          'availableQuantity',
+          'name',
+          'displayName',
+          'description',
+          'category',
+          'updatedAt'
+        ]);
+
+      // Vendor can delete only their own products.
+      allow delete: if isStoreOwner(storeId);
+    }
+
+    // ============================================================
+    // ORDERS
+    // ============================================================
+
+    match /orders/{orderId} {
+
+      // Only the authenticated buyer can create an order.
+      allow create: if isSignedIn() &&
+        request.resource.data.orderId == orderId &&
+        request.resource.data.buyerUid == currentUid() &&
+        request.resource.data.identity.buyer.uid == currentUid() &&
+        request.resource.data.vendorUid is string &&
+        request.resource.data.storeId is string &&
+        request.resource.data.orderNumber is string &&
+        request.resource.data.status == 'New' &&
+        // Every order must snapshot where it is being delivered. The buyer
+        // enters this at checkout and it can never change afterwards: no
+        // update branch permits writing deliveryLocation.
+        request.resource.data.deliveryLocation is map &&
+        request.resource.data.deliveryLocation.address is string &&
+        request.resource.data.deliveryLocation.address.size() > 0;
+
+      // Buyer can read their own orders.
+      // Vendor can read orders belonging to their store.
+      // Assigned delivery partner can read their order.
+      allow get: if isSignedIn() &&
+        resource.data != null &&
+        (
+          resource.data.buyerUid == currentUid() ||
+          resource.data.vendorUid == currentUid() ||
+          (
+            assignmentData(orderId) != null &&
+            assignmentData(orderId).deliveryUid == currentUid()
+          )
+        );
+
+      // Buyer order list.
+      // Vendor order list.
+      // Enforced per returned document: only orders belonging to the current
+      // user (as buyer or vendor) can be returned by any order query.
+      allow list: if isSignedIn() &&
+        resource.data != null &&
+        (
+          resource.data.buyerUid == currentUid() ||
+          resource.data.vendorUid == currentUid()
+        );
+
+      // Order updates.
+      allow update: if isSignedIn() &&
+        resource.data != null &&
+        (
+
+          // --------------------------------------------------------
+          // VENDOR ORDER UPDATES
+          // --------------------------------------------------------
+
+          (
+            resource.data.vendorUid == currentUid() &&
+            resource.data.paymentStatus == 'Verified' &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'deliveryStatus',
+              'updatedAt'
+            ]) &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['status']) == false ||
+              request.resource.data.status in [
+                'Preparing',
+                'Ready for Pickup'
+              ]
+            ) &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['deliveryStatus']) == false ||
+              request.resource.data.deliveryStatus in [
+                'Preparing Order',
+                'Parcel Ready'
+              ]
+            )
+          )
+
+          ||
+
+          // --------------------------------------------------------
+          // DELIVERY PARTNER UPDATES
+          // --------------------------------------------------------
+
+          (
+            driverWritesOnOrder(orderId) &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'deliveryStatus',
+              'parcelStatus',
+              'deliveryAccepted',
+              'deliveryAcceptedAt',
+              'assignedDeliveryPerson',
+              'assignedDelivery',
+              'deliveryRequestId',
+              'updatedAt'
+            ]) &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['status']) == false ||
+              request.resource.data.status in [
+                'Out for Delivery',
+                'Completed'
+              ]
+            ) &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['deliveryStatus']) == false ||
+              request.resource.data.deliveryStatus in [
+                'Out for Delivery',
+                'Picked Up',
+                'Delivered'
+              ]
+            ) &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['parcelStatus']) == false ||
+              request.resource.data.parcelStatus in [
+                'Picked Up',
+                'Delivered'
+              ]
+            ) &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['assignedDelivery']) == false ||
+              (
+                request.resource.data.assignedDelivery != null &&
+                request.resource.data.assignedDelivery.uid == currentUid()
+              )
+            )
+          )
+
+          ||
+
+          // --------------------------------------------------------
+          // BUYER CANCELS THEIR OWN NEW ORDER
+          // --------------------------------------------------------
+          // A buyer may cancel only an order they own that is still 'New'.
+          // Only cancellation bookkeeping fields may change; the order can
+          // never move to any status other than 'Cancelled'.
+
+          (
+            resource.data.buyerUid == currentUid() &&
+            resource.data.status == 'New' &&
+            request.resource.data.status == 'Cancelled' &&
+            request.resource.data.deliveryStatus == 'Cancelled' &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'deliveryStatus',
+              'cancelReason',
+              'cancelledAt',
+              'updatedAt'
+            ])
+          )
+
+          ||
+
+          // --------------------------------------------------------
+          // BUYER EDITS THEIR OWN NEW ORDER
+          // --------------------------------------------------------
+          // A buyer may edit only an order they own that is still 'New' and
+          // that stays 'New'. Only the order contents/totals may change;
+          // identity, ownership, delivery and status fields are untouchable.
+
+          (
+            resource.data.buyerUid == currentUid() &&
+            resource.data.status == 'New' &&
+            request.resource.data.status == 'New' &&
+            request.resource.data.items is list &&
+            request.resource.data.items.size() > 0 &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'items',
+              'subtotal',
+              'packaging',
+              'packagingFee',
+              'total',
+              'editedAt',
+              'editCount',
+              'updatedAt'
+            ])
+          )
+
+          ||
+
+          // --------------------------------------------------------
+          // BUYER REPORTS DIRECT M-PESA PAYMENT
+          // --------------------------------------------------------
+          // The buyer reports a direct M-PESA payment made to the vendor by
+          // pasting the confirmation message. Only allowed while the order is
+          // still 'New'. Only the payment-report fields may change; the order
+          // contents, ownership and status stay untouched. Once the vendor
+          // accepts and status becomes 'Preparing', the buyer can no longer
+          // change the payment report.
+
+          (
+            resource.data.buyerUid == currentUid() &&
+            resource.data.status == 'New' &&
+            request.resource.data.status == 'New' &&
+            request.resource.data.paymentStatus == 'Reported' &&
+            request.resource.data.paymentReported == true &&
+            request.resource.data.paymentMethod == 'mpesa_direct' &&
+            request.resource.data.mpesaConfirmationMessage is string &&
+            request.resource.data.mpesaConfirmationMessage.size() > 0 &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'paymentMethod',
+              'paymentReported',
+              'paymentReportedAt',
+              'mpesaConfirmationMessage',
+              'paymentStatus',
+              'updatedAt'
+            ])
+          )
+
+          ||
+
+          // --------------------------------------------------------
+          // VENDOR MANUALLY VERIFIES PAYMENT REPORT (ACCEPT)
+          // --------------------------------------------------------
+          // The vendor manually compared the buyer's pasted M-PESA message
+          // against their actual M-PESA transaction and confirms the payment.
+          // Only works while the order is still 'New' with paymentStatus
+          // 'Reported', so a stale screen or a second device can never accept
+          // an order that was already rejected or processed. The transition
+          // moves the order into the normal vendor processing flow
+          // (status 'Preparing', deliveryStatus 'Preparing Order').
+
+          (
+            resource.data.vendorUid == currentUid() &&
+            resource.data.status == 'New' &&
+            resource.data.paymentStatus == 'Reported' &&
+            request.resource.data.status == 'Preparing' &&
+            request.resource.data.deliveryStatus == 'Preparing Order' &&
+            request.resource.data.paymentStatus == 'Verified' &&
+            request.resource.data.paymentVerifiedBy == currentUid() &&
+            request.resource.data.paymentVerificationMethod == 'vendor_manual' &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'paymentStatus',
+              'paymentVerifiedBy',
+              'paymentVerifiedAt',
+              'paymentVerificationMethod',
+              'status',
+              'deliveryStatus',
+              'updatedAt'
+            ])
+          )
+
+          ||
+
+          // --------------------------------------------------------
+          // VENDOR REJECTS PAYMENT REPORT (CANCEL)
+          // --------------------------------------------------------
+          // The vendor could not confirm the payment and cancels the order.
+          // Only works while the order is still 'New' with paymentStatus
+          // 'Reported', so a rejected order can never later be accepted or
+          // delivered. Buyer-side fields, totals and identity are untouched.
+
+          (
+            resource.data.vendorUid == currentUid() &&
+            resource.data.status == 'New' &&
+            resource.data.paymentStatus == 'Reported' &&
+            request.resource.data.status == 'Cancelled' &&
+            request.resource.data.deliveryStatus == 'Cancelled' &&
+            request.resource.data.paymentStatus == 'Rejected' &&
+            request.resource.data.cancelledBy == 'vendor' &&
+            request.resource.data.cancelledByUid == currentUid() &&
+
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'paymentStatus',
+              'status',
+              'deliveryStatus',
+              'cancelledBy',
+              'cancelledByUid',
+              'cancelledAt',
+              'cancelReason',
+              'updatedAt'
+            ])
+          )
+        );
+    }
+
+    // ============================================================
+    // DELIVERY REQUESTS
+    // ============================================================
+
+    match /deliveryRequests/{requestId} {
+
+      // Vendor creates a delivery request for one of their own orders.
+      allow create: if isSignedIn() &&
+        request.resource.data.requestId == requestId &&
+        request.resource.data.orderId is string &&
+        orderData(request.resource.data.orderId) != null &&
+        orderData(request.resource.data.orderId).vendorUid == currentUid() &&
+        // Delivery can never start until the vendor has manually verified the
+        // buyer's direct M-PESA payment report.
+        orderData(request.resource.data.orderId).paymentStatus == 'Verified' &&
+        request.resource.data.vendorUid == currentUid() &&
+        request.resource.data.deliveryUid is string &&
+        request.resource.data.status == 'Awaiting Accept' &&
+        // The destination on the request must be exactly the destination
+        // snapshotted on the order at checkout. The vendor (or any client)
+        // cannot invent or alter the delivery address.
+        request.resource.data.deliveryLocation is map &&
+        request.resource.data.deliveryLocation.address is string &&
+        orderData(request.resource.data.orderId).deliveryLocation != null &&
+        request.resource.data.deliveryLocation.address ==
+          orderData(request.resource.data.orderId).deliveryLocation.address;
+
+      // Rider can read their own request.
+      // Vendor can read requests belonging to their orders.
+      allow get: if isSignedIn() &&
+        resource.data != null &&
+        (
+          resource.data.deliveryUid == currentUid() ||
+          resource.data.vendorUid == currentUid()
+        );
+
+      // Rider pending-request list.
+      // Vendor request list.
+      // Enforced per returned document: only requests addressed to the current
+      // rider or created by the current vendor can be returned.
+      allow list: if isSignedIn() &&
+        resource.data != null &&
+        (
+          resource.data.deliveryUid == currentUid() ||
+          resource.data.vendorUid == currentUid()
+        );
+
+      // Rider can accept or decline a request.
+      allow update: if isSignedIn() &&
+        resource.data != null &&
+        resource.data.deliveryUid == currentUid() &&
+        resource.data.status == 'Awaiting Accept' &&
+        (
+
+          // ACCEPT
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'deliveryAccepted',
+              'acceptedAt',
+              'deliveryUid',
+              'updatedAt'
+            ]) &&
+
+            request.resource.data.status == 'Accepted' &&
+
+            (
+              request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['deliveryUid']) == false ||
+              request.resource.data.deliveryUid == currentUid()
+            )
+          )
+
+          ||
+
+          // DECLINE
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'declinedAt',
+              'updatedAt'
+            ]) &&
+
+            request.resource.data.status == 'Declined'
+          )
+        );
+    }
+
+    // ============================================================
+    // DELIVERY ASSIGNMENTS
+    // ============================================================
+
+    // Document ID = orderId.
+    match /deliveryAssignments/{orderId} {
+
+      // Only the delivery partner named in the delivery request
+      // can create the assignment.
+      allow create: if isSignedIn() &&
+        request.resource.data.orderId == orderId &&
+        request.resource.data.assignmentId == orderId &&
+        request.resource.data.deliveryUid == currentUid() &&
+        request.resource.data.requestId is string &&
+        requestData(request.resource.data.requestId) != null &&
+        requestData(request.resource.data.requestId).deliveryUid == currentUid() &&
+        requestData(request.resource.data.requestId).orderId == orderId &&
+        request.resource.data.status == 'Confirmed' &&
+        // The assignment inherits the order's snapshotted destination; a
+        // rider cannot invent a delivery address on an assignment.
+        request.resource.data.deliveryLocation is map &&
+        request.resource.data.deliveryLocation.address is string &&
+        orderData(orderId).deliveryLocation != null &&
+        request.resource.data.deliveryLocation.address ==
+          orderData(orderId).deliveryLocation.address;
+
+      // Rider can read their own assignment.
+      allow get: if isSignedIn() &&
+        resource.data != null &&
+        resource.data.deliveryUid == currentUid();
+
+      // Rider active/history lists.
+      // Enforced per returned document: riders only see their own assignments.
+      allow list: if isSignedIn() &&
+        resource.data != null &&
+        resource.data.deliveryUid == currentUid();
+
+      // Rider can update delivery progress.
+      allow update: if isSignedIn() &&
+        resource.data != null &&
+        resource.data.deliveryUid == currentUid() &&
+
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'parcelStatus',
+          'deliveryStatus',
+          'status',
+          'completedAt',
+          'updatedAt'
+        ]) &&
+
+        (
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['status']) == false ||
+          request.resource.data.status == 'Completed'
+        ) &&
+
+        (
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['deliveryStatus']) == false ||
+          request.resource.data.deliveryStatus in [
+            'Out for Delivery',
+            'Picked Up',
+            'Delivered'
+          ]
+        ) &&
+
+        (
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['parcelStatus']) == false ||
+          request.resource.data.parcelStatus in [
+            'Picked Up',
+            'Delivered'
+          ]
+        );
+    }
+  }
+}

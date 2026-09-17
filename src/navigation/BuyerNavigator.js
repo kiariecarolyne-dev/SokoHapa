@@ -6,6 +6,7 @@ import StoreScreen from '../screens/buyer/StoreScreen';
 import ProductDetailsScreen from '../screens/buyer/ProductDetailsScreen';
 import CartScreen from '../screens/buyer/CartScreen';
 import CheckoutScreen from '../screens/buyer/CheckoutScreen';
+import EditOrderScreen from '../screens/buyer/EditOrderScreen';
 import OrdersScreen from '../screens/buyer/OrdersScreen';
 import BuyerOrderDetailsScreen from '../screens/buyer/BuyerOrderDetailsScreen';
 import BuyerProfileScreen from '../screens/buyer/BuyerProfileScreen';
@@ -65,6 +66,11 @@ export default function BuyerNavigator() {
         name="OrderDetails"
         component={BuyerOrderDetailsScreen}
         options={{ title: 'Order Details' }}
+      />
+      <Stack.Screen
+        name="EditOrder"
+        component={EditOrderScreen}
+        options={{ title: 'Edit Order' }}
       />
       <Stack.Screen
         name="Profile"

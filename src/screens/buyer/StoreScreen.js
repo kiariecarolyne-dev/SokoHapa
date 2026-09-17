@@ -1,16 +1,81 @@
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImagePlaceholder from '../../components/ImagePlaceholder';
 import ProductCard from '../../components/ProductCard';
+import ProfileAvatar from '../../components/ProfileAvatar';
 import StatusBadge from '../../components/StatusBadge';
+import { fetchUserProfile } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
-import { getStoreById } from '../../services/mockData';
+import { onStoreProducts } from '../../services/productService';
+import { getStoreById as getMockStoreById } from '../../services/mockData';
+import { onStore } from '../../services/storeService';
+import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function StoreScreen({ navigation, route }) {
   const storeId = route?.params?.storeId;
-  const store = getStoreById(storeId);
   const { addItem } = useCart();
+  const [store, setStore] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [vendorProfile, setVendorProfile] = useState(null);
+
+  useEffect(() => {
+    if (TEST_MODE) {
+      const mockStore = getMockStoreById(storeId);
+      setStore(mockStore);
+      setProducts(mockStore?.products || []);
+      setLoaded(true);
+      return () => {};
+    }
+    if (!storeId) {
+      setLoaded(true);
+      return () => {};
+    }
+    const unsubscribeStore = onStore(storeId, (snapshot) => {
+      setStore(snapshot);
+      setLoaded(true);
+    });
+    const unsubscribeProducts = onStoreProducts(storeId, setProducts);
+    return () => {
+      unsubscribeStore();
+      unsubscribeProducts();
+    };
+  }, [storeId]);
+
+  const storeVendorUid = store?.vendorUid ?? store?.ownerUid ?? null;
+
+  useEffect(() => {
+    let active = true;
+    if (storeVendorUid) {
+      fetchUserProfile(storeVendorUid)
+        .then((profile) => {
+          if (active && profile) setVendorProfile(profile);
+        })
+        .catch((error) => {
+          console.warn('[auth] fetchUserProfile failed on StoreScreen', {
+            role: 'buyer',
+            operation: 'fetchUserProfile',
+            collection: 'users',
+            path: `users/${storeVendorUid}`,
+            code: error?.code,
+            message: error?.message,
+          });
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [storeVendorUid]);
+
+  if (!loaded) {
+    return (
+      <View style={styles.fallback}>
+        <Text style={styles.fallbackText}>Loading…</Text>
+      </View>
+    );
+  }
 
   if (!store) {
     return (
@@ -21,11 +86,20 @@ export default function StoreScreen({ navigation, route }) {
   }
 
   const handleAddToCart = (product, quantity) => {
-    addItem(product, quantity);
+    addItem(product, quantity, store);
     Alert.alert(
       'Added to Cart',
       `${quantity} kg of ${product.name} added to your cart.`
     );
+  };
+
+  const vendor = {
+    uid: vendorProfile?.uid ?? storeVendorUid ?? null,
+    fullName: vendorProfile?.fullName || store.vendorName,
+    storeName: vendorProfile?.storeName || store.name,
+    phone: vendorProfile?.phone || store.phone || null,
+    location: vendorProfile?.location || store.location,
+    profilePhoto: vendorProfile?.profilePhoto ?? store.profilePhoto ?? null,
   };
 
   return (
@@ -34,34 +108,50 @@ export default function StoreScreen({ navigation, route }) {
 
       <View style={styles.header}>
         <View style={styles.titleRow}>
+          <ProfileAvatar
+            profilePhoto={vendor.profilePhoto}
+            size={52}
+            fallbackIcon="storefront-outline"
+            style={styles.avatar}
+          />
           <View style={styles.titleWrap}>
-            <Text style={styles.storeName}>{store.name}</Text>
-            <Text style={styles.vendorName}>by {store.vendorName}</Text>
+            <Text style={styles.storeName}>{vendor.storeName}</Text>
+            <Text style={styles.vendorName}>by {vendor.fullName}</Text>
           </View>
-          <StatusBadge label={store.status} />
+          <StatusBadge label={store.status || 'Open'} />
         </View>
 
         <View style={styles.metaRow}>
           <Ionicons name="location-outline" size={16} color={colors.textMuted} />
-          <Text style={styles.meta}>{store.location}</Text>
+          <Text style={styles.meta}>{vendor.location}</Text>
         </View>
         <View style={styles.metaRow}>
           <Ionicons name="star" size={16} color={colors.accent} />
           <Text style={styles.meta}>{store.rating} rating</Text>
         </View>
+        {vendor.phone ? (
+          <View style={styles.metaRow}>
+            <Ionicons name="call-outline" size={16} color={colors.textMuted} />
+            <Text style={styles.meta}>{vendor.phone}</Text>
+          </View>
+        ) : null}
 
         <Text style={styles.description}>{store.description}</Text>
       </View>
 
       <View style={styles.products}>
         <Text style={styles.sectionTitle}>Products</Text>
-        {store.products.map((product) => (
-          <ProductCard
-            key={product.id}
-            product={product}
-            onAddToCart={(quantity) => handleAddToCart(product, quantity)}
-          />
-        ))}
+        {products.length === 0 ? (
+          <Text style={styles.emptyText}>No products available in this store yet.</Text>
+        ) : (
+          products.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              onAddToCart={(quantity) => handleAddToCart(product, quantity)}
+            />
+          ))
+        )}
       </View>
     </ScrollView>
   );
@@ -84,6 +174,12 @@ const styles = StyleSheet.create({
   fallbackText: {
     color: colors.textMuted,
   },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginVertical: spacing.md,
+  },
   storeImage: {
     height: 160,
     borderRadius: 0,
@@ -95,8 +191,11 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  avatar: {
+    marginRight: spacing.md,
   },
   titleWrap: {
     flex: 1,

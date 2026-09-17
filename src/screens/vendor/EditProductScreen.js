@@ -6,32 +6,111 @@ import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
 import {
+  getActiveCategories,
+} from '../../utils/productCatalogue';
+import {
   categories,
-  getProductById,
+  getProductById as getMockProductById,
   removeVendorStoreProduct,
   updateVendorStoreProduct,
 } from '../../services/mockData';
-import { vendorCanManageStore } from '../../utils/testMode';
+import {
+  getProductById as getStoreProductById,
+  removeVendorProduct,
+  updateVendorProduct,
+} from '../../services/productService';
+import { ensureVendorStore } from '../../services/storeService';
+import { TEST_MODE, vendorCanManageStore } from '../../utils/testMode';
 import { colors, radius, spacing, typography } from '../../utils/theme';
 
 // Edits one of the vendor's own store products. Editing is a
 // subscription-protected action (see TEST_MODE gating). Changes apply only to
 // the vendor's store copy and never to the master catalogue.
 export default function EditProductScreen({ navigation, route }) {
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
   const productId = route?.params?.productId;
-  const existing = getProductById(productId);
+  const storeId = currentUser?.uid;
 
   const canManageStore = vendorCanManageStore(userProfile);
-  const product = existing?.product;
-  const store = existing?.store;
 
-  const [name, setName] = useState(product?.name || '');
-  const [category, setCategory] = useState(product?.category || categories[0]);
-  const [imageSelected, setImageSelected] = useState(Boolean(product));
-  const [priceText, setPriceText] = useState(product ? String(product.pricePerKg) : '');
-  const [quantityText, setQuantityText] = useState(product ? String(product.availableQuantity) : '');
-  const [available, setAvailable] = useState(product?.available ?? true);
+  const [product, setProduct] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const categoryOptions = TEST_MODE ? categories : getActiveCategories().map((c) => c.categoryName);
+
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState(categoryOptions[0] ?? 'Other');
+  const [imageSelected, setImageSelected] = useState(false);
+  const [priceText, setPriceText] = useState('');
+  const [quantityText, setQuantityText] = useState('');
+  const [available, setAvailable] = useState(true);
+
+  useEffect(() => {
+    if (TEST_MODE) {
+      const existing = getMockProductById(productId);
+      const mockProduct = existing?.product ?? null;
+      setProduct(mockProduct);
+      if (mockProduct) {
+        setName(mockProduct.name ?? '');
+        setCategory(mockProduct.category ?? categoryOptions[0]);
+        setImageSelected(true);
+        setPriceText(mockProduct.pricePerKg != null ? String(mockProduct.pricePerKg) : '');
+        setQuantityText(mockProduct.availableQuantity != null ? String(mockProduct.availableQuantity) : '');
+        setAvailable(mockProduct.available ?? true);
+      }
+      setLoaded(true);
+      return;
+    }
+    if (!storeId || !productId) {
+      setLoaded(true);
+      return;
+    }
+    let active = true;
+    ensureVendorStore({
+      ownerUid: storeId,
+      vendorName: userProfile?.fullName || '',
+      name: userProfile?.storeName || '',
+      phone: userProfile?.phone || '',
+      profilePhoto: userProfile?.profilePhoto || null,
+    }).catch((error) => {
+      console.warn('[store] ensureVendorStore failed on EditProductScreen', {
+        role: 'vendor',
+        operation: 'ensureVendorStore',
+        collection: 'stores',
+        path: `stores/${storeId}`,
+        code: error?.code,
+        message: error?.message,
+      });
+    });
+    getStoreProductById(storeId, productId)
+      .then((p) => {
+        if (!active) return;
+        setProduct(p);
+        if (p) {
+          setName(p.name ?? '');
+          setCategory(p.category ?? categoryOptions[0]);
+          setImageSelected(true);
+          setPriceText(p.pricePerKg != null ? String(p.pricePerKg) : '');
+          setQuantityText(p.availableQuantity != null ? String(p.availableQuantity) : '');
+          setAvailable(p.available ?? true);
+        }
+        setLoaded(true);
+      })
+      .catch((error) => {
+        console.warn('[product] getStoreProductById failed on EditProductScreen', {
+          role: 'vendor',
+          operation: 'getStoreProductById',
+          collection: 'stores/{storeId}/products',
+          path: `stores/${storeId}/products/${productId}`,
+          code: error?.code,
+          message: error?.message,
+        });
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [productId, storeId]);
 
   const requireSubscription = () => {
     Alert.alert(
@@ -50,7 +129,15 @@ export default function EditProductScreen({ navigation, route }) {
     }
   }, []);
 
-  if (!product || !store) {
+  if (!loaded) {
+    return (
+      <View style={styles.fallback}>
+        <Text style={styles.fallbackText}>Loading…</Text>
+      </View>
+    );
+  }
+
+  if (!product) {
     return (
       <View style={styles.fallback}>
         <Text style={styles.fallbackText}>Product not found</Text>
@@ -58,7 +145,7 @@ export default function EditProductScreen({ navigation, route }) {
     );
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canManageStore) {
       requireSubscription();
       return;
@@ -77,16 +164,40 @@ export default function EditProductScreen({ navigation, route }) {
       Alert.alert('Missing details', 'Please enter a valid Product Name, Price and Quantity.');
       return;
     }
-    updateVendorStoreProduct(store.id, product.id, {
-      name: name.trim(),
-      category: category.trim(),
-      pricePerKg: price,
-      availableQuantity: quantity,
-      available,
-    });
-    Alert.alert('Changes Saved', 'Your store product has been updated.', [
-      { text: 'OK', onPress: () => navigation.goBack() },
-    ]);
+
+    if (TEST_MODE) {
+      updateVendorStoreProduct('store-1', product.id, {
+        name: name.trim(),
+        category: category.trim(),
+        pricePerKg: price,
+        availableQuantity: quantity,
+        available,
+      });
+      Alert.alert('Changes Saved', 'Your store product has been updated.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+      return;
+    }
+
+    if (!storeId) {
+      Alert.alert('Signed out', 'Please sign in again to save product changes.');
+      return;
+    }
+
+    try {
+      await updateVendorProduct(storeId, product.id, {
+        name: name.trim(),
+        category: category.trim(),
+        price,
+        availableQuantity: quantity,
+        available,
+      });
+      Alert.alert('Changes Saved', 'Your store product has been updated.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (error) {
+      Alert.alert('Save failed', 'Could not save your product changes. Please try again.');
+    }
   };
 
   const handleRemove = () => {
@@ -99,10 +210,26 @@ export default function EditProductScreen({ navigation, route }) {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            removeVendorStoreProduct(store.id, product.id);
-            Alert.alert('Product Removed', 'The product was removed from your store.', [
-              { text: 'OK', onPress: () => navigation.goBack() },
-            ]);
+            if (TEST_MODE) {
+              removeVendorStoreProduct('store-1', product.id);
+              Alert.alert('Product Removed', 'The product was removed from your store.', [
+                { text: 'OK', onPress: () => navigation.goBack() },
+              ]);
+              return;
+            }
+            if (!storeId) {
+              Alert.alert('Signed out', 'Please sign in again to remove the product.');
+              return;
+            }
+            removeVendorProduct(storeId, product.id)
+              .then(() => {
+                Alert.alert('Product Removed', 'The product was removed from your store.', [
+                  { text: 'OK', onPress: () => navigation.goBack() },
+                ]);
+              })
+              .catch(() => {
+                Alert.alert('Remove failed', 'Could not remove the product. Please try again.');
+              });
           },
         },
       ]
@@ -127,7 +254,7 @@ export default function EditProductScreen({ navigation, route }) {
 
           <Text style={styles.label}>Category</Text>
           <View style={styles.chipRow}>
-            {categories.map((cat) => {
+            {categoryOptions.map((cat) => {
               const active = category === cat;
               return (
                 <View key={cat}>

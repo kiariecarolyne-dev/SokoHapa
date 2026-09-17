@@ -28,7 +28,7 @@
 //     release/production bundle (__DEV__ is false there), so this can never
 //     become a production payment bypass.
 
-const TEST_MODE_ACTIVE = true;
+const TEST_MODE_ACTIVE = false;
 
 export const TEST_MODE =
   (typeof __DEV__ === 'boolean' && __DEV__) && TEST_MODE_ACTIVE;
@@ -41,6 +41,8 @@ import {
   setActiveDeliveryFromOrder,
   addDeliveryHistoryRecord,
   getOrderByOrderNumber,
+  getBuyerOrderById,
+  getVendorOrderById,
   activeDelivery,
   deliveryRequests,
 } from '../services/mockData';
@@ -108,6 +110,18 @@ export function assignTestDeliveryPerson(orderId, person) {
     status: 'Out for Delivery',
     deliveryStatus: 'With Rider',
     assignedDeliveryPerson: person ? person.fullName : 'Unassigned',
+    assignedDelivery: person
+      ? {
+          uid: person.uid ?? null,
+          id: person.id ?? null,
+          fullName: person.fullName,
+          phone: person.phone ?? null,
+          vehicleType: person.vehicleType ?? null,
+          plateNumber: person.plateNumber ?? null,
+          profilePhoto: person.profilePhoto ?? null,
+          availability: person.availability ?? null,
+        }
+      : null,
   });
   if (!order) {
     return null;
@@ -130,8 +144,111 @@ export function acceptTestDeliveryRequest(requestId) {
     return null;
   }
   deliveryRequests.splice(index, 1);
-  updateOrderRecord(order.id, { deliveryStatus: 'With Rider' });
+  updateOrderRecord(order.id, {
+    deliveryStatus: 'Out for Delivery',
+    deliveryAccepted: true,
+  });
   setActiveDeliveryFromOrder(order);
+  return order;
+}
+
+// Cancels a test order. Mirrors the real cancelOrder rules: only orders still
+// 'New' may be cancelled and only the permitted fields are updated.
+export function cancelOrderTest(orderId, reason) {
+  if (!TEST_MODE) return null;
+  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
+  if (!order) return null;
+  if (order.status !== 'New') return null;
+  Object.assign(order, {
+    status: 'Cancelled',
+    deliveryStatus: 'Cancelled',
+    cancelReason:
+      typeof reason === 'string' && reason.trim() ? reason.trim() : null,
+    cancelledAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  return order;
+}
+
+// Applies buyer order edits to a test order. Only 'New' orders may be edited
+// and only the buyer-side snapshot fields change.
+export function editOrderTest(orderId, updates) {
+  if (!TEST_MODE) return null;
+  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
+  if (!order) return null;
+  if (order.status !== 'New') return null;
+  const clean = {};
+  for (const key of ['items', 'subtotal', 'packaging', 'packagingFee', 'total']) {
+    if (updates && key in updates) {
+      clean[key] = updates[key];
+    }
+  }
+  Object.assign(order, clean, {
+    editedAt: new Date().toISOString(),
+    editCount: (order.editCount || 0) + 1,
+    updatedAt: new Date().toISOString(),
+  });
+  return order;
+}
+
+// Buyer reports a direct M-PESA payment to a test order. Mirrors the real
+// reportPayment rules: only 'New' orders may receive a payment report.
+export function reportPaymentTest(orderId, mpesaConfirmationMessage) {
+  if (!TEST_MODE) return null;
+  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
+  if (!order) return null;
+  if (order.status !== 'New') return null;
+  Object.assign(order, {
+    paymentMethod: 'mpesa_direct',
+    paymentReported: true,
+    paymentReportedAt: new Date().toISOString(),
+    mpesaConfirmationMessage:
+      typeof mpesaConfirmationMessage === 'string'
+        ? mpesaConfirmationMessage.trim()
+        : '',
+    paymentStatus: 'Reported',
+    updatedAt: new Date().toISOString(),
+  });
+  return order;
+}
+
+// Vendor manually verifies a test order's payment report and starts preparing.
+export function verifyVendorPaymentTest(orderId, vendorUid) {
+  if (!TEST_MODE) return null;
+  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
+  if (!order) return null;
+  if (order.status !== 'New' || order.paymentStatus !== 'Reported') return null;
+  Object.assign(order, {
+    paymentStatus: 'Verified',
+    paymentVerifiedBy: vendorUid ?? null,
+    paymentVerifiedAt: new Date().toISOString(),
+    paymentVerificationMethod: 'vendor_manual',
+    status: 'Preparing',
+    deliveryStatus: 'Preparing Order',
+    updatedAt: new Date().toISOString(),
+  });
+  return order;
+}
+
+// Vendor rejects a test order's payment report and cancels the order.
+export function rejectVendorPaymentTest(orderId, vendorUid, reason) {
+  if (!TEST_MODE) return null;
+  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
+  if (!order) return null;
+  if (order.status !== 'New' || order.paymentStatus !== 'Reported') return null;
+  Object.assign(order, {
+    paymentStatus: 'Rejected',
+    status: 'Cancelled',
+    deliveryStatus: 'Cancelled',
+    cancelledBy: 'vendor',
+    cancelledByUid: vendorUid ?? null,
+    cancelledAt: new Date().toISOString(),
+    cancelReason:
+      typeof reason === 'string' && reason.trim()
+        ? reason.trim().slice(0, 300)
+        : 'Payment could not be confirmed',
+    updatedAt: new Date().toISOString(),
+  });
   return order;
 }
 
@@ -152,6 +269,16 @@ export function completeTestDelivery(orderNumber) {
     deliveryLocation: '',
     buyerPhone: '',
     parcelStatus: 'Pending Pickup',
+    items: [],
+    packaging: null,
+    packagingFee: 0,
+    subtotal: 0,
+    total: 0,
+    deliveryStatus: '',
+    deliveryAccepted: false,
+    assignedDelivery: null,
+    vendor: null,
+    buyer: null,
   });
   return order;
 }

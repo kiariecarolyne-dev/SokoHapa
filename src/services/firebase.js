@@ -41,4 +41,12 @@ try {
 
 const db = getFirestore(app);
 
+console.log(
+  `[FIREBASE CONFIG] ${JSON.stringify({
+    projectId: firebaseConfig.projectId,
+    authDomain: firebaseConfig.authDomain,
+    storageBucket: firebaseConfig.storageBucket,
+  })}`
+);
+
 export { app, auth, db };

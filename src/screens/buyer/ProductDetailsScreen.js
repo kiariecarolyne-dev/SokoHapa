@@ -1,21 +1,64 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImagePlaceholder from '../../components/ImagePlaceholder';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useCart } from '../../context/CartContext';
-import { getProductById } from '../../services/mockData';
+import { getProductById as getMockProductById } from '../../services/mockData';
+import { getProductById as getStoreProductById } from '../../services/productService';
+import { getStoreById as getRealStoreById } from '../../services/storeService';
+import { TEST_MODE } from '../../utils/testMode';
 import { getMasterProductById, resolveProductImage } from '../../utils/productCatalogue';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
 export default function ProductDetailsScreen({ navigation, route }) {
   const productId = route?.params?.productId;
-  const result = getProductById(productId);
+  const storeId = route?.params?.storeId;
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
+  const [data, setData] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
-  if (!result) {
+  useEffect(() => {
+    if (TEST_MODE) {
+      const result = getMockProductById(productId);
+      setData(result);
+      setLoaded(true);
+      return () => {};
+    }
+    if (!storeId || !productId) {
+      setData(null);
+      setLoaded(true);
+      return () => {};
+    }
+    let active = true;
+    Promise.all([getRealStoreById(storeId), getStoreProductById(storeId, productId)])
+      .then(([store, product]) => {
+        if (!active) return;
+        setData({ store, product });
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (active) {
+          setData(null);
+          setLoaded(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [storeId, productId]);
+
+  if (!loaded) {
+    return (
+      <View style={styles.fallback}>
+        <Text style={styles.fallbackText}>Loading…</Text>
+      </View>
+    );
+  }
+
+  if (!data?.product || !data?.store) {
     return (
       <View style={styles.fallback}>
         <Text style={styles.fallbackText}>Product not found</Text>
@@ -23,7 +66,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
     );
   }
 
-  const { product, store } = result;
+  const { product, store } = data;
   const unavailable = !product.available || product.availableQuantity <= 0;
 
   const masterProduct = product.masterProductId ? getMasterProductById(product.masterProductId) : null;
@@ -31,7 +74,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
 
   const handleAdd = () => {
     if (unavailable) return;
-    addItem(product, quantity);
+    addItem(product, quantity, store);
     Alert.alert(
       'Added to Cart',
       `${quantity} kg of ${product.name} added to your cart.`
