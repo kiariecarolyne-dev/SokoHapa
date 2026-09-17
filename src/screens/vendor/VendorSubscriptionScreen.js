@@ -69,6 +69,9 @@ export default function VendorSubscriptionScreen({ navigation }) {
     subscription?.subscriptionStatus === 'active' &&
     (expiryMs === null || (Number.isFinite(expiryMs) && expiryMs > Date.now()));
 
+  const expiredPreviously =
+    !isSubscribed && expiryMs !== null && Number.isFinite(expiryMs);
+
   const expiryDate = formatDate(subscription?.subscriptionExpiryDate);
 
   useEffect(() => {
@@ -120,6 +123,13 @@ export default function VendorSubscriptionScreen({ navigation }) {
         body: JSON.stringify({
           phoneNumber: normalized,
           amount: SUBSCRIPTION_AMOUNT,
+          // Renewal hint: when the vendor already has a (possibly expired)
+          // subscription, pass the current entitlement deadline so the backend
+          // can extend from it by one calendar month instead of accidentally
+          // shortening the vendor's coverage. Sent only when a deadline exists.
+          ...(Number.isFinite(expiryMs)
+            ? { previousExpiry: Math.round(expiryMs) }
+            : {}),
         }),
       });
 
@@ -225,6 +235,18 @@ export default function VendorSubscriptionScreen({ navigation }) {
                 Subscription active until {expiryDate}
               </Text>
             </>
+          ) : expiredPreviously ? (
+            <>
+              <StatusBadge label="Expired" />
+              <View style={styles.expiredCard}>
+                <Ionicons name="alert-circle-outline" size={22} color={colors.warning} />
+                <Text style={styles.expiredText}>
+                  Your subscription expired on {expiryDate}. Your store stays
+                  visible to customers but is temporarily unavailable for new
+                  orders. Renew below to start receiving orders again.
+                </Text>
+              </View>
+            </>
           ) : (
             <>
               <StatusBadge label="Inactive" />
@@ -280,7 +302,13 @@ export default function VendorSubscriptionScreen({ navigation }) {
 
             <View style={styles.actions}>
               <PrimaryButton
-                title={loading ? 'Processing…' : 'Subscribe with M-Pesa'}
+                title={
+                  loading
+                    ? 'Processing…'
+                    : expiredPreviously
+                      ? 'Renew with M-Pesa'
+                      : 'Subscribe with M-Pesa'
+                }
                 icon={loading ? undefined : 'phone-portrait-outline'}
                 onPress={handleSubscribe}
                 disabled={loading}
@@ -384,6 +412,24 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.success,
     marginTop: spacing.sm,
+    fontWeight: '600',
+  },
+  expiredCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  expiredText: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: colors.warning,
+    marginLeft: spacing.sm,
+    lineHeight: 20,
     fontWeight: '600',
   },
   planCard: {

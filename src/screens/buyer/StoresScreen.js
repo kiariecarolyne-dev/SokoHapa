@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import StoreCard from '../../components/StoreCard';
 import { getStoreProducts } from '../../services/productService';
 import { categories as mockCategories, stores as mockStores } from '../../services/mockData';
-import { onActiveStores } from '../../services/storeService';
+import { onActiveStores, resolveStoreAvailability } from '../../services/storeService';
 import { getActiveCategories } from '../../utils/productCatalogue';
 import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, spacing, typography } from '../../utils/theme';
@@ -16,6 +16,7 @@ export default function StoresScreen({ navigation, route }) {
 
   const [allStores, setAllStores] = useState([]);
   const [storeProductInfo, setStoreProductInfo] = useState({});
+  const [unavailableIds, setUnavailableIds] = useState({});
 
   const categoryOptions = TEST_MODE
     ? mockCategories
@@ -30,6 +31,14 @@ export default function StoresScreen({ navigation, route }) {
     const unsubscribe = onActiveStores((list) => {
       if (!active) return;
       setAllStores(list);
+      resolveStoreAvailability(list).then((rows) => {
+        if (!active) return;
+        const map = {};
+        rows.forEach((row) => {
+          map[row.store.id] = row.unavailable;
+        });
+        setUnavailableIds(map);
+      });
       Promise.all(
         list.map(async (store) => {
           let products = [];
@@ -164,6 +173,7 @@ export default function StoresScreen({ navigation, route }) {
         renderItem={({ item }) => (
           <StoreCard
             store={item}
+            unavailable={unavailableIds[item.id] === true}
             onPress={() => navigation.navigate('Store', { storeId: item.id })}
           />
         )}

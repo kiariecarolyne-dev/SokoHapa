@@ -25,16 +25,15 @@ import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import {
   formatKES,
   formatOrderTime,
-  normalizeKenyanPhoneDisplay,
-  normalizeKenyanPhoneE164,
 } from '../../utils/format';
+import { buildPaymentMethodRows } from '../../utils/paymentMethods';
 import { getVehicleLabel } from '../../utils/vehicleTypes';
 
 export default function BuyerOrderDetailsScreen({ navigation, route }) {
   const orderId = route?.params?.orderId;
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null);
   const [cancelVisible, setCancelVisible] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
@@ -104,7 +103,7 @@ export default function BuyerOrderDetailsScreen({ navigation, route }) {
     deliveryLabel = 'Assigned';
   }
 
-  const displayPhone = normalizeKenyanPhoneDisplay(vendor.phone);
+  const methodRows = buildPaymentMethodRows(order.paymentVendor, vendor.phone);
   const isNew = order.status === 'New';
   const paymentStatus = order.paymentStatus || 'Pending';
   const paymentReported =
@@ -114,27 +113,23 @@ export default function BuyerOrderDetailsScreen({ navigation, route }) {
   const vendorCancelled = order.cancelledBy === 'vendor';
   const deliveryDest = normalizeDeliveryLocation(order.deliveryLocation);
 
-  const copyVendorNumber = async () => {
-    const e164 = normalizeKenyanPhoneE164(vendor.phone);
-    if (!e164) {
-      Alert.alert(
-        'No M-PESA Number',
-        'The vendor has not provided an M-PESA number yet.'
-      );
+  const copyMethod = async (method) => {
+    if (!method?.copyValue) {
       return;
     }
     try {
-      await Clipboard.setStringAsync(e164);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await Clipboard.setStringAsync(method.copyValue);
+      setCopied(method.id);
+      setTimeout(() => setCopied(null), 2000);
       if (Platform.OS === 'android') {
-        ToastAndroid.show(displayPhone + ' copied', ToastAndroid.SHORT);
+        ToastAndroid.show(method.displayValue + ' copied', ToastAndroid.SHORT);
       }
+      const isTill = method.id === 'till';
       Alert.alert(
-        'Number Copied',
-        displayPhone + ' copied. Pay ' +
-          formatKES(order.total) +
-          ' to the vendor via M-PESA.'
+        isTill ? 'Till Number Copied' : 'Number Copied',
+        isTill
+          ? `Till ${method.displayValue} copied. Open M-PESA, select Buy Goods Till / Lipa na M-PESA (Till), enter the number and amount, and pay ${formatKES(order.total)} directly to the vendor.`
+          : `${method.displayValue} copied. Open M-PESA, select Send Money / Lipa na M-PESA, and pay ${formatKES(order.total)} directly to the vendor.`
       );
     } catch (error) {
       Alert.alert(
@@ -281,23 +276,39 @@ export default function BuyerOrderDetailsScreen({ navigation, route }) {
               Pay Vendor Directly via M-PESA
             </Text>
           </View>
-          {displayPhone ? (
-            <View style={styles.payNumberRow}>
-              <Text style={styles.payNumber}>{displayPhone}</Text>
-              <TouchableOpacity style={styles.copyBtn} onPress={copyVendorNumber}>
-                <Ionicons
-                  name={copied ? 'checkmark-circle' : 'copy-outline'}
-                  size={18}
-                  color={colors.primaryDark}
-                />
-                <Text style={styles.copyBtnText}>
-                  {copied ? 'Copied' : 'Copy Number'}
+          {methodRows.length > 0 ? (
+            <View>
+              {methodRows.map((method) => (
+                <View key={method.id} style={styles.payNumberRow}>
+                  <View style={styles.payNumberWrap}>
+                    <Text style={styles.payMethodLabel}>{method.label}</Text>
+                    <Text style={styles.payNumber}>{method.displayValue}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.copyBtn}
+                    onPress={() => copyMethod(method)}
+                  >
+                    <Ionicons
+                      name={copied === method.id ? 'checkmark-circle' : 'copy-outline'}
+                      size={18}
+                      color={colors.primaryDark}
+                    />
+                    <Text style={styles.copyBtnText}>
+                      {copied === method.id ? 'Copied' : 'Copy Number'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {methodRows.length > 1 ? (
+                <Text style={styles.payOrSeparator}>
+                  Use either method to pay - both reach the same vendor.
                 </Text>
-              </TouchableOpacity>
+              ) : null}
             </View>
           ) : (
             <Text style={styles.payVendorNoNumber}>
-              The vendor has not provided an M-PESA number yet.
+              The vendor has not added M-PESA payment details yet. Contact them
+              before paying.
             </Text>
           )}
           <View style={styles.payNotice}>
@@ -700,12 +711,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: radius.md,
     padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  payNumberWrap: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  payMethodLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   payNumber: {
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: 0.5,
+  },
+  payOrSeparator: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
   },
   copyBtn: {
     flexDirection: 'row',

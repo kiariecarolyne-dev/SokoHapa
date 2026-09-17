@@ -11,6 +11,7 @@ import VendorOrdersScreen from '../screens/vendor/VendorOrdersScreen';
 import VendorOrderDetailsScreen from '../screens/vendor/VendorOrderDetailsScreen';
 import ChooseDeliveryScreen from '../screens/vendor/ChooseDeliveryScreen';
 import VendorProfileScreen from '../screens/vendor/VendorProfileScreen';
+import PaymentMethodsScreen from '../screens/vendor/PaymentMethodsScreen';
 
 import { colors } from '../utils/theme';
 
@@ -86,6 +87,11 @@ export default function VendorNavigator() {
         name="Profile"
         component={VendorProfileScreen}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PaymentMethods"
+        component={PaymentMethodsScreen}
+        options={{ title: 'Payment Settings' }}
       />
     </Stack.Navigator>
   );

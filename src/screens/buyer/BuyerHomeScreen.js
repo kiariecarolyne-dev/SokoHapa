@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { getProfilePhotoUrl } from '../../services/profilePhotoService';
 import { categories, featuredStoreIds, stores } from '../../services/mockData';
-import { onActiveStores } from '../../services/storeService';
+import { onActiveStores, resolveStoreAvailability } from '../../services/storeService';
 import { getActiveCategories } from '../../utils/productCatalogue';
 import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
@@ -16,7 +16,7 @@ export default function BuyerHomeScreen({ navigation }) {
   const { items } = useCart();
   const { userProfile } = useAuth();
   const profilePhoto = getProfilePhotoUrl(userProfile?.profilePhoto);
-  const [activeStores, setActiveStores] = useState([]);
+  const [storeRows, setStoreRows] = useState([]);
 
   const categoryOptions = TEST_MODE
     ? categories
@@ -24,10 +24,23 @@ export default function BuyerHomeScreen({ navigation }) {
 
   useEffect(() => {
     if (TEST_MODE) {
-      setActiveStores(stores.filter((store) => featuredStoreIds.includes(store.id)));
+      setStoreRows(
+        stores
+          .filter((store) => featuredStoreIds.includes(store.id))
+          .map((store) => ({ store, vendorProfile: null, unavailable: false }))
+      );
       return () => {};
     }
-    return onActiveStores(setActiveStores);
+    let active = true;
+    const unsubscribe = onActiveStores((list) => {
+      resolveStoreAvailability(list).then((rows) => {
+        if (active) setStoreRows(rows);
+      });
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   return (
@@ -94,11 +107,12 @@ export default function BuyerHomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {activeStores.map((store) => (
+        {storeRows.map((row) => (
           <StoreCard
-            key={store.id}
-            store={store}
-            onPress={() => navigation.navigate('Store', { storeId: store.id })}
+            key={row.store.id}
+            store={row.store}
+            unavailable={row.unavailable}
+            onPress={() => navigation.navigate('Store', { storeId: row.store.id })}
           />
         ))}
 

@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { auth, db } from '../services/firebase';
@@ -184,7 +184,11 @@ export function AuthProvider({ children }) {
     }
 
     if (profile.role === 'delivery') {
-      profile.nationalId = profileData.nationalId || '';
+      // The National ID is NOT stored on the public users/{uid} profile (that
+      // document is returned whole by the delivery-directory query, so it must
+      // never contain sensitive fields). It is written to the owner-only
+      // deliveryCredentials/{uid} document instead. All other delivery
+      // profile fields stay on users/{uid} exactly as before.
       profile.vehicleType = profileData.vehicleType || '';
       profile.vehiclePlateNumber = profileData.vehiclePlateNumber || '';
     }
@@ -195,6 +199,26 @@ export function AuthProvider({ children }) {
       // Clean up the auth account so the user can retry registration.
       await deleteUser(credential.user).catch(() => {});
       throw error;
+    }
+
+    // Write the confidential National ID after the profile succeeds, and roll
+    // the whole registration back (profile + auth) if this second write fails,
+    // so a delivery partner is never left half-registered.
+    if (profile.role === 'delivery') {
+      const nationalId = (profileData.nationalId || '').trim();
+      if (nationalId) {
+        try {
+          await setDoc(doc(db, 'deliveryCredentials', uid), {
+            uid,
+            nationalId,
+            updatedAt: now,
+          });
+        } catch (error) {
+          await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+          await deleteUser(credential.user).catch(() => {});
+          throw error;
+        }
+      }
     }
 
     return { user: credential.user, role: profile.role };

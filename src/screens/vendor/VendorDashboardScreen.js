@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { currentVendor } from '../../services/mockData';
 import { getProfilePhotoUrl } from '../../services/profilePhotoService';
 import { ensureVendorStore } from '../../services/storeService';
-import { TEST_MODE, isVendorSubscribed } from '../../utils/testMode';
+import { TEST_MODE, isVendorSubscribed, subscriptionExpiryMs } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 const menu = [
@@ -31,6 +31,15 @@ export default function VendorDashboardScreen({ navigation }) {
       };
 
   const subscribed = isVendorSubscribed(userProfile);
+  const expiryMs = subscriptionExpiryMs(userProfile);
+  const expired = !subscribed && expiryMs != null;
+  const expiryDate = expired
+    ? new Date(expiryMs).toLocaleDateString('en-KE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '';
 
   useEffect(() => {
     if (TEST_MODE || !userProfile) return;
@@ -87,7 +96,7 @@ export default function VendorDashboardScreen({ navigation }) {
             <Text style={styles.welcomeTitle}>Karibu, {vendorDisplay.fullName.split(' ')[0]}</Text>
             <Text style={styles.welcomeStore}>{vendorDisplay.storeName}</Text>
           </View>
-          <StatusBadge label={subscribed ? 'Active' : 'Inactive'} />
+          <StatusBadge label={subscribed ? 'Active' : expired ? 'Expired' : 'Inactive'} />
         </View>
 
         {subscribed ? (
@@ -103,12 +112,32 @@ export default function VendorDashboardScreen({ navigation }) {
         ) : (
           <View style={styles.statusCard}>
             <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>Subscription: Inactive</Text>
+              <Text style={styles.statusLabel}>
+                Subscription: {expired ? 'Expired' : 'Inactive'}
+              </Text>
               <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
             </View>
-            <Text style={styles.statusHint}>
-              Subscribe to start selling products and receiving orders.
-            </Text>
+            {expired ? (
+              <>
+                <Text style={styles.statusHint}>
+                  Your subscription expired on {expiryDate}. Your store stays
+                  visible to customers but is temporarily unavailable for new
+                  orders. Renew to start receiving orders again.
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.renewButton}
+                  onPress={() => navigation.navigate('Subscription')}
+                >
+                  <Ionicons name="phone-portrait-outline" size={16} color={colors.white} />
+                  <Text style={styles.renewButtonText}>Renew with M-Pesa</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={styles.statusHint}>
+                Subscribe to start selling products and receiving orders.
+              </Text>
+            )}
           </View>
         )}
 
@@ -211,6 +240,22 @@ const styles = StyleSheet.create({
     color: colors.warning,
     marginTop: 4,
     lineHeight: 18,
+  },
+  renewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.warning,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  renewButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
+    marginLeft: spacing.xs,
   },
   activeStatusCard: {
     backgroundColor: colors.successLight,

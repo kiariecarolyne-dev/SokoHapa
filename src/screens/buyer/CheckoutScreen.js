@@ -11,7 +11,11 @@ import { createOrder, generateOrderNumber } from '../../services/orderService';
 import { getUnitLabel } from '../../utils/productCatalogue';
 import { TEST_MODE, placeTestOrder } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
-import { formatKES, normalizeKenyanPhoneDisplay, normalizeKenyanPhoneE164 } from '../../utils/format';
+import { formatKES } from '../../utils/format';
+import {
+  buildPaymentMethodRows,
+  normalizeVendorPaymentMethods,
+} from '../../utils/paymentMethods';
 
 export const PACKAGING_OPTIONS = [
   { id: 'small-bag', name: 'Small Carrier Bag', price: 20 },
@@ -23,18 +27,19 @@ export default function CheckoutScreen({ navigation }) {
   const { currentUser, userProfile } = useAuth();
   const [packaging, setPackaging] = useState(null);
   const [vendorInfo, setVendorInfo] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryDirections, setDeliveryDirections] = useState('');
+  const [placing, setPlacing] = useState(false);
 
   const packagingFee = packaging ? packaging.price : 0;
   const orderTotal = subtotal + packagingFee;
 
-  const displayPhone = normalizeKenyanPhoneDisplay(vendorInfo?.phone);
-
-  // Resolves the vendor's M-PESA / phone number for the pay-vendor card so the
-  // buyer sees the same number that later gets snapshotted onto the order via
-  // createOrder (identity.vendor.phone = store.phone).
+  // Resolves the vendor's M-PESA payment details (Send Money number and/or
+  // Buy Goods Till number) for the pay-vendor card so the buyer sees the same
+  // numbers that get snapshotted onto the order (paymentVendor) via
+  // createOrder. When the vendor has configured nothing, the store phone is
+  // used as the Send Money number so existing vendors keep a working method.
   const firstItem = items[0];
   useEffect(() => {
     if (!firstItem) {
@@ -46,27 +51,34 @@ export default function CheckoutScreen({ navigation }) {
     const storeName = firstItem.storeName || null;
     const vendorName = firstItem.vendorName || null;
     const mockStore = getMockStoreById(storeId);
-    const fallbackPhone = mockStore?.phone || null;
+    let fallbackPhone = mockStore?.phone || null;
+    let methodsConfig = mockStore?.mpesaPaymentMethods || null;
     (async () => {
-      let resolved = {
-        storeName: storeName || mockStore?.name || null,
-        vendorName: vendorName || mockStore?.vendorName || null,
-        phone: fallbackPhone,
-      };
       try {
         const real = await getRealStoreById(storeId);
         if (real) {
-          resolved = {
-            storeName: real.name || resolved.storeName,
-            vendorName: real.vendorName || resolved.vendorName,
-            phone: real.phone || fallbackPhone,
-          };
+          fallbackPhone = real.phone || fallbackPhone;
+          let profile = null;
+          if (real.vendorUid) {
+            try {
+              profile = await fetchUserProfile(real.vendorUid);
+            } catch (error) {
+              profile = null;
+            }
+          }
+          methodsConfig = profile?.mpesaPaymentMethods || null;
+          fallbackPhone = profile?.phone || fallbackPhone;
         }
       } catch (error) {
         // Fall back to the cart snapshot / mock store data.
       }
       if (!cancelled) {
-        setVendorInfo(resolved);
+        setVendorInfo({
+          storeName: storeName || mockStore?.name || null,
+          vendorName: vendorName || mockStore?.vendorName || null,
+          phone: fallbackPhone,
+          methods: normalizeVendorPaymentMethods(methodsConfig, fallbackPhone),
+        });
       }
     })();
     return () => {
@@ -74,22 +86,20 @@ export default function CheckoutScreen({ navigation }) {
     };
   }, [firstItem?.storeId, firstItem?.storeName, firstItem?.vendorName]);
 
-  const copyVendorPhone = async () => {
-    const e164 = normalizeKenyanPhoneE164(vendorInfo?.phone);
-    if (!e164) {
-      Alert.alert(
-        'No M-PESA Number',
-        'The vendor has not provided an M-PESA number yet.'
-      );
+  const copyMethod = async (method) => {
+    if (!method?.copyValue) {
       return;
     }
     try {
-      await Clipboard.setStringAsync(e164);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await Clipboard.setStringAsync(method.copyValue);
+      setCopied(method.id);
+      setTimeout(() => setCopied(null), 2000);
+      const isTill = method.id === 'till';
       Alert.alert(
-        'Number Copied',
-        `${displayPhone} copied. Open M-PESA, select Send Money / Lipa na M-PESA, and pay ${formatKES(orderTotal)} directly to the vendor.`
+        isTill ? 'Till Number Copied' : 'Number Copied',
+        isTill
+          ? `Till ${method.displayValue} copied. Open M-PESA, select Buy Goods Till / Lipa na M-PESA (Till), enter the till number and amount, and pay ${formatKES(orderTotal)} directly to the vendor.`
+          : `${method.displayValue} copied. Open M-PESA, select Send Money / Lipa na M-PESA, and pay ${formatKES(orderTotal)} directly to the vendor.`
       );
     } catch (error) {
       Alert.alert(
@@ -98,6 +108,11 @@ export default function CheckoutScreen({ navigation }) {
       );
     }
   };
+
+  const methodRows = buildPaymentMethodRows(
+    vendorInfo?.methods,
+    vendorInfo?.phone
+  );
 
   // Resolves the real vendor profile from Firestore when the first cart item
   // belongs to a store linked to a real vendor UID. Returns null otherwise so
@@ -114,7 +129,7 @@ export default function CheckoutScreen({ navigation }) {
     }
   };
 
-  const handlePlaceOrder = async () => {
+  const placeOrderBody = async () => {
     if (!packaging) {
       Alert.alert(
         'Carrier Bag Required',
@@ -157,7 +172,7 @@ export default function CheckoutScreen({ navigation }) {
         clearCart();
         Alert.alert(
           'Test Order Placed',
-          `Order ${order.orderNumber} placed in TEST MODE with ${packaging.name}. Pay the vendor directly via M-PESA using the number shown on the screen, then report the payment on the order. The delivery fee is paid separately in cash to the delivery person.`,
+          `Order ${order.orderNumber} placed in TEST MODE with ${packaging.name}. Pay the vendor directly via M-PESA using one of the methods shown on the screen, then report the payment on the order. The delivery fee is paid separately in cash to the delivery person.`,
           [
             {
               text: 'View My Orders',
@@ -204,6 +219,7 @@ export default function CheckoutScreen({ navigation }) {
     }
 
     let store = null;
+    let sellerProfile = null;
     try {
       store = await getRealStoreById(storeId);
     } catch (error) {
@@ -211,6 +227,23 @@ export default function CheckoutScreen({ navigation }) {
     }
     const resolvedVendorUid = store?.vendorUid || vendorUid;
     const storeName = store?.name || firstItem.storeName;
+
+    if (resolvedVendorUid) {
+      try {
+        sellerProfile = await fetchUserProfile(resolvedVendorUid);
+      } catch (error) {
+        sellerProfile = null;
+      }
+    }
+
+    // Snapshot the vendor's current M-PESA payment methods onto the order.
+    // Prefer the configured Send Money / Buy Goods Till details from the
+    // vendor profile; fall back to the store phone as the Send Money number
+    // so a vendor who has configured nothing keeps a working pay method.
+    const paymentVendor = normalizeVendorPaymentMethods(
+      sellerProfile?.mpesaPaymentMethods || null,
+      store?.phone || sellerProfile?.phone || ''
+    );
 
     const orderItems = items.map((item) => ({
       id: item.id,
@@ -251,6 +284,7 @@ export default function CheckoutScreen({ navigation }) {
           address: deliveryAddress.trim(),
           directions: deliveryDirections.trim() || null,
         },
+        paymentVendor,
       });
       if (!order) {
         Alert.alert('Order Failed', 'Could not create the order. Please try again.');
@@ -259,7 +293,7 @@ export default function CheckoutScreen({ navigation }) {
       clearCart();
       Alert.alert(
         'Order Placed',
-        `Order ${order.orderNumber} placed. Pay the vendor directly via M-PESA using the number shown on the order, then report the payment. The delivery fee is paid separately in cash to the delivery person when your order is delivered.`,
+        `Order ${order.orderNumber} placed. Pay the vendor directly via M-PESA using one of the methods shown on the order, then report the payment. The delivery fee is paid separately in cash to the delivery person when your order is delivered.`,
         [
           {
             text: 'View My Orders',
@@ -276,6 +310,18 @@ export default function CheckoutScreen({ navigation }) {
         'Order Failed',
         error?.message || 'Could not place the order. Please try again.'
       );
+    }
+  };
+
+  // Guards against double-taps creating the same order twice. All of the
+  // order-creation work lives in placeOrderBody; this wrapper serializes it.
+  const handlePlaceOrder = async () => {
+    if (placing) return;
+    setPlacing(true);
+    try {
+      await placeOrderBody();
+    } finally {
+      setPlacing(false);
     }
   };
 
@@ -376,21 +422,39 @@ export default function CheckoutScreen({ navigation }) {
           <Text style={styles.payVendorName}>
             {vendorInfo?.vendorName || vendorInfo?.storeName || 'Vendor'}
           </Text>
-          {displayPhone ? (
-            <View style={styles.payNumberRow}>
-              <Text style={styles.payNumber}>{displayPhone}</Text>
-              <TouchableOpacity style={styles.copyButton} onPress={copyVendorPhone}>
-                <Ionicons
-                  name={copied ? 'checkmark-circle' : 'copy-outline'}
-                  size={18}
-                  color={colors.primaryDark}
-                />
-                <Text style={styles.copyText}>{copied ? 'Copied' : 'Copy Number'}</Text>
-              </TouchableOpacity>
+          {methodRows.length > 0 ? (
+            <View>
+              {methodRows.map((method, index) => (
+                <View key={method.id} style={styles.payNumberRow}>
+                  <View style={styles.payNumberWrap}>
+                    <Text style={styles.payMethodLabel}>{method.label}</Text>
+                    <Text style={styles.payNumber}>{method.displayValue}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.copyButton}
+                    onPress={() => copyMethod(method)}
+                  >
+                    <Ionicons
+                      name={copied === method.id ? 'checkmark-circle' : 'copy-outline'}
+                      size={18}
+                      color={colors.primaryDark}
+                    />
+                    <Text style={styles.copyText}>
+                      {copied === method.id ? 'Copied' : 'Copy Number'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {methodRows.length > 1 ? (
+                <Text style={styles.payOrSeparator}>
+                  Use either method to pay - both reach the same vendor.
+                </Text>
+              ) : null}
             </View>
           ) : (
             <Text style={styles.payVendorNoNumber}>
-              The vendor has not provided an M-PESA number yet.
+              The vendor has not added M-PESA payment details yet. Contact them
+              before paying.
             </Text>
           )}
           <View style={styles.payAmountRow}>
@@ -400,14 +464,14 @@ export default function CheckoutScreen({ navigation }) {
           <View style={styles.payNotice}>
             <Ionicons name="shield-checkmark-outline" size={18} color={colors.success} />
             <Text style={styles.payNoticeText}>
-              Pay this order amount directly to the vendor's M-PESA number.
-              SokoHapa does NOT receive your money — this is a direct payment to
-              the vendor.
+              Pay this order amount directly to the vendor using one of the
+              methods above. SokoHapa does NOT receive your money — this is a
+              direct payment to the vendor.
             </Text>
           </View>
           <View style={styles.payStepsCard}>
             <Text style={styles.payStepsText}>
-              {'1. Open M-PESA\n2. Select Send Money (or Lipa na M-PESA)\n3. Enter the vendor\'s number and amount\n4. Confirm with your PIN'}
+              {'1. Open M-PESA\n2. Send Money (to the number) or Buy Goods Till (enter the till number)\n3. Enter the amount\n4. Confirm with your PIN'}
             </Text>
           </View>
           <View style={styles.cashReminder}>
@@ -437,7 +501,12 @@ export default function CheckoutScreen({ navigation }) {
           <Text style={styles.footerLabel}>Order Total</Text>
           <Text style={styles.footerValue}>{formatKES(orderTotal)}</Text>
         </View>
-        <PrimaryButton title="Place Order" onPress={handlePlaceOrder} icon="checkmark" />
+        <PrimaryButton
+          title={placing ? 'Placing Order…' : 'Place Order'}
+          onPress={handlePlaceOrder}
+          icon="checkmark"
+          disabled={placing}
+        />
       </View>
     </View>
   );
@@ -634,12 +703,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: radius.md,
     padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  payNumberWrap: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  payMethodLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   payNumber: {
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  payOrSeparator: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   copyButton: {
     flexDirection: 'row',

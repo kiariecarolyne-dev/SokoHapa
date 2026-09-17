@@ -1,5 +1,9 @@
 export const categories = ['Vegetables', 'Cereals', 'Fruits', 'Grains', 'Other'];
 
+// Builds the paymentVendor snapshot the same way production checkout does, so
+// the TEST_MODE order mirrors the real order shape.
+import { normalizeVendorPaymentMethods } from '../utils/paymentMethods';
+
 export const stores = [
   {
     id: 'store-1',
@@ -11,6 +15,10 @@ export const stores = [
     uid: null,
     vendorUid: null,
     phone: '+254 712 345 678',
+    mpesaPaymentMethods: {
+      sendMoneyNumber: '+254 712 345 678',
+      tillNumber: '5123456',
+    },
     profilePhoto: null,
     description: 'Fresh vegetables and fruits straight from our family farm.',
     products: [
@@ -76,6 +84,9 @@ export const stores = [
     uid: null,
     vendorUid: null,
     phone: '+254 720 111 222',
+    mpesaPaymentMethods: {
+      tillNumber: '8123456',
+    },
     profilePhoto: null,
     description: 'Wholesale and retail cereals and grains in bulk.',
     products: [
@@ -141,6 +152,9 @@ export const stores = [
     uid: null,
     vendorUid: null,
     phone: '+254 733 555 666',
+    mpesaPaymentMethods: {
+      sendMoneyNumber: '+254 733 555 666',
+    },
     profilePhoto: null,
     description: 'Premium fresh fruits sourced from the Rift Valley.',
     products: [
@@ -302,7 +316,24 @@ export const currentVendor = {
   email: 'vendor@sokohapa.co.ke',
   subscriptionActive: false,
   subscriptionPlan: 'Ksh 100 / month',
+  mpesaPaymentMethods: {
+    sendMoneyNumber: '+254 712 345 678',
+    tillNumber: '5123456',
+  },
 };
+
+// TEST_MODE helper: updates the prototype vendor's M-PESA payment methods so
+// the vendor Payment Settings screen, the buyer checkout display and the
+// in-memory test-order snapshot all agree. Never touches Firestore. The
+// prototype vendor (currentVendor) corresponds to store-1.
+export function updateVendorPaymentMethodsMock(methods) {
+  const clean = normalizeVendorPaymentMethods(methods, null);
+  const next = { sendMoneyNumber: null, tillNumber: null, ...(clean || {}) };
+  if (currentVendor) currentVendor.mpesaPaymentMethods = { ...next };
+  const store = getStoreById('store-1');
+  if (store) store.mpesaPaymentMethods = { ...next };
+  return next;
+}
 
 export const vendorOrders = [
   {
@@ -894,6 +925,15 @@ function buildTestOrderFromCart({
     profilePhoto: buyer?.profilePhoto ?? null,
   };
 
+  // Snapshot the vendor's configured M-PESA payment methods the same way
+  // production checkout does: prefer the real vendor profile when one is
+  // linked, then the prototype store's configured methods, and finally fall
+  // back to the store phone as the Send Money number.
+  const paymentVendor = normalizeVendorPaymentMethods(
+    v?.mpesaPaymentMethods ?? store?.mpesaPaymentMethods ?? null,
+    v?.phone ?? store?.phone ?? null
+  );
+
   const items = cartItems.map((cartItem) => {
     const resolved = getProductById(cartItem.id);
     const referencedMasterId =
@@ -940,6 +980,7 @@ function buildTestOrderFromCart({
       distanceKm: 8,
     },
     deliveryLocation: deliveryLocation || null,
+    paymentVendor: paymentVendor || null,
   };
 }
 

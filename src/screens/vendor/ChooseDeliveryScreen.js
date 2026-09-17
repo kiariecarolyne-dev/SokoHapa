@@ -14,6 +14,7 @@ export default function ChooseDeliveryScreen({ navigation, route }) {
   const orderId = route?.params?.orderId;
   const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (TEST_MODE) {
@@ -29,6 +30,7 @@ export default function ChooseDeliveryScreen({ navigation, route }) {
   }, []);
 
   const handleSelect = async (person) => {
+    if (sending) return;
     if (!orderId) {
       Alert.alert('No Order', 'No order ID was provided.');
       return;
@@ -57,6 +59,7 @@ export default function ChooseDeliveryScreen({ navigation, route }) {
         Alert.alert('Order Not Found', 'This order is no longer available.');
         return;
       }
+      setSending(true);
       await createDeliveryRequest({ order, deliveryUid: person.uid });
       Alert.alert(
         'Delivery Request Sent',
@@ -68,6 +71,8 @@ export default function ChooseDeliveryScreen({ navigation, route }) {
         'Request Failed',
         error?.message || 'Could not send the delivery request. Please try again.'
       );
+    } finally {
+      setSending(false);
     }
   };
 

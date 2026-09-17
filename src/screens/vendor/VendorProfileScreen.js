@@ -8,7 +8,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
 import { currentVendor } from '../../services/mockData';
 import { getProfilePhotoUrl, uploadProfilePhoto } from '../../services/profilePhotoService';
-import { TEST_MODE } from '../../utils/testMode';
+import { TEST_MODE, isVendorSubscribed, subscriptionExpiryMs } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function VendorProfileScreen({ navigation }) {
@@ -24,6 +24,24 @@ export default function VendorProfileScreen({ navigation }) {
         phone: userProfile?.phone || '',
         email: userProfile?.email || '',
       };
+
+  const expiryMs = subscriptionExpiryMs(userProfile);
+  const subscribed = isVendorSubscribed(userProfile);
+  const formatExpiry = (ms) =>
+    new Date(ms).toLocaleDateString('en-KE', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  const subscriptionLabel = TEST_MODE
+    ? 'Preview (test mode)'
+    : subscribed
+      ? expiryMs != null
+        ? `Active until ${formatExpiry(expiryMs)}`
+        : 'Active'
+      : expiryMs != null
+        ? `Expired on ${formatExpiry(expiryMs)}`
+        : 'Inactive';
 
   const handleChangePhoto = async () => {
     if (uploading) return;
@@ -114,6 +132,12 @@ export default function VendorProfileScreen({ navigation }) {
           <ProfileRow icon="mail-outline" label="Email" value={vendorDisplay.email} />
           <View style={styles.divider} />
           <ProfileRow icon="storefront-outline" label="Store" value={vendorDisplay.storeName} />
+          <View style={styles.divider} />
+          <ProfileRow
+            icon="shield-checkmark-outline"
+            label="Subscription"
+            value={subscriptionLabel}
+          />
         </View>
 
         <PrimaryButton
@@ -121,6 +145,13 @@ export default function VendorProfileScreen({ navigation }) {
           variant="outline"
           icon="create-outline"
           onPress={() => Alert.alert('Edit Profile', 'Profile editing will be available in a later phase.')}
+          style={styles.button}
+        />
+        <PrimaryButton
+          title="Payment Details"
+          variant="outline"
+          icon="card-outline"
+          onPress={() => navigation.navigate('PaymentMethods')}
           style={styles.button}
         />
         <PrimaryButton

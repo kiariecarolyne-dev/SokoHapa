@@ -86,6 +86,7 @@ export async function createOrder({
   vendor = null,
   delivery = null,
   deliveryLocation = null,
+  paymentVendor = null,
 }) {
   if (!buyerUid) {
     throw new Error('createOrder: buyerUid is required');
@@ -141,6 +142,10 @@ export async function createOrder({
     },
     delivery: delivery || null,
     deliveryLocation: deliveryLocation || null,
+    // Snapshot of the vendor's configured M-PESA payment methods at checkout.
+    // Captured once and immutable - no update branch in the rules writes it,
+    // so it stays linked to the numbers the buyer actually paid to.
+    paymentVendor: paymentVendor || null,
     assignedDeliveryPerson: null,
     assignedDelivery: null,
     createdAt: serverTimestamp(),

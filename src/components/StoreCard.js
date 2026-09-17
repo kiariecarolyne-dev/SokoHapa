@@ -5,9 +5,15 @@ import { colors, radius, shadow, spacing, typography } from '../utils/theme';
 import { getProfilePhotoUrl } from '../services/profilePhotoService';
 import ImagePlaceholder from './ImagePlaceholder';
 
-export default function StoreCard({ store, onPress }) {
+export default function StoreCard({ store, onPress, unavailable = false }) {
   const [photoError, setPhotoError] = useState(false);
   const photoUri = getProfilePhotoUrl(store.profilePhoto);
+  const statusLabel = unavailable ? 'Temporarily Unavailable' : store.status || 'Open';
+  const statusColor = unavailable
+    ? colors.warning
+    : store.status === 'Open'
+      ? colors.success
+      : colors.danger;
 
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.card}>
@@ -27,14 +33,8 @@ export default function StoreCard({ store, onPress }) {
       <View style={styles.body}>
         <View style={styles.titleRow}>
           <Text style={styles.name} numberOfLines={1}>{store.name}</Text>
-          <Text
-            style={[
-              styles.status,
-              { color: store.status === 'Open' ? colors.success : colors.danger },
-            ]}
-            numberOfLines={1}
-          >
-            {store.status}
+          <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
+            {statusLabel}
           </Text>
         </View>
         {store.vendorName ? (

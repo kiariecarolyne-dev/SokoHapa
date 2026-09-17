@@ -36,6 +36,11 @@ service cloud.firestore {
       return exists(p) ? get(p).data : null;
     }
 
+    function userData(userId) {
+      let p = /databases/$(database)/documents/users/$(userId);
+      return exists(p) ? get(p).data : null;
+    }
+
     function isStoreOwner(storeId) {
       let s = storeData(storeId);
       return isSignedIn() &&
@@ -43,11 +48,60 @@ service cloud.firestore {
              s.ownerUid == currentUid();
     }
 
+    // True when a vendor profile describes a vendor who is currently entitled
+    // to accept NEW marketplace orders.
+    //
+    // Expiration is always evaluated with server-side time (request.time),
+    // never the device clock. Both the existing backend field
+    // (subscriptionExpiryDate) and the alternative subscriptionExpiresAt are
+    // honoured when present. NOTE: both must be Firestore Timestamps; a string
+    // value cannot participate in a timestamp comparison and therefore the
+    // vendor is NOT treated as entitled (fail-closed).
+    function vendorEntitled(profile) {
+      return profile != null &&
+             profile.subscriptionStatus == 'active' &&
+             (
+               profile.subscriptionExpiryDate == null ||
+               (
+                 profile.subscriptionExpiryDate is timestamp &&
+                 profile.subscriptionExpiryDate > request.time
+               )
+             ) &&
+             (
+               profile.subscriptionExpiresAt == null ||
+               (
+                 profile.subscriptionExpiresAt is timestamp &&
+                 profile.subscriptionExpiresAt > request.time
+               )
+             );
+    }
+
     function isActiveStore(storeId) {
       let s = storeData(storeId);
       return isSignedIn() &&
              s != null &&
              s.isActive == true;
+    }
+
+    // Ranks used to enforce that order and assignment state machines can only
+    // move FORWARD (or re-save the same state, so idempotent re-writes still
+    // pass). Unknown or earlier states map to 0 so a forward write from any
+    // allowed starting point is never blocked, while a regression write
+    // (e.g. Completed -> Preparing, Delivered -> Out for Delivery) is denied.
+    function orderStatusRank(value) {
+      return value == 'Completed' ? 2 :
+             value == 'Out for Delivery' ? 1 : 0;
+    }
+
+    function deliveryProgressRank(value) {
+      return value == 'Delivered' ? 3 :
+             value == 'Picked Up' ? 2 :
+             value == 'Out for Delivery' ? 1 : 0;
+    }
+
+    function parcelStatusRank(value) {
+      return value == 'Delivered' ? 2 :
+             value == 'Picked Up' ? 1 : 0;
     }
 
     // Allows a delivery partner to update an order only when:
@@ -123,8 +177,77 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'profilePhoto',
           'availability',
+          'mpesaPaymentMethods',
           'updatedAt'
-        ]);
+        ]) &&
+        // The vendor's M-PESA payment methods are a fixed-shape map: optional
+        // Send Money phone number and Buy Goods Till number, both strings.
+        (
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['mpesaPaymentMethods']) == false ||
+          (
+            (request.resource.data.mpesaPaymentMethods != null
+              ? request.resource.data.mpesaPaymentMethods.diff(
+                  resource.data.mpesaPaymentMethods != null
+                    ? resource.data.mpesaPaymentMethods
+                    : {}
+                ).affectedKeys().hasOnly(['sendMoneyNumber', 'tillNumber'])
+              : true) &&
+            (
+              request.resource.data.mpesaPaymentMethods == null ||
+              request.resource.data.mpesaPaymentMethods.sendMoneyNumber == null ||
+              request.resource.data.mpesaPaymentMethods.sendMoneyNumber is string
+            ) &&
+            (
+              request.resource.data.mpesaPaymentMethods == null ||
+              request.resource.data.mpesaPaymentMethods.tillNumber == null ||
+              request.resource.data.mpesaPaymentMethods.tillNumber is string
+            )
+          )
+        );
+    }
+
+    // ============================================================
+    // DELIVERY CREDENTIALS (private National ID)
+    // ============================================================
+    // The delivery partner's National ID lives in its own owner-only document
+    // instead of inside users/{deliveryUid}. Firestore rules cannot restrict
+    // which fields of a returned document the app sees, and the delivery
+    // directory query (users where role=='delivery') returns whole documents;
+    // keeping National ID in users/ would therefore expose it to every
+    // signed-in user. Only the partner themself can create, read, update or
+    // delete their own document, and there is NO list access.
+
+    match /deliveryCredentials/{deliveryUid} {
+
+      allow create: if isSignedIn() &&
+        deliveryUid == currentUid() &&
+        request.resource.data.uid == currentUid() &&
+        userData(deliveryUid).role == 'delivery' &&
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() > 0 &&
+        request.resource.data.updatedAt is timestamp;
+
+      allow get: if isSignedIn() &&
+        deliveryUid == currentUid();
+
+      // No directory: delivery credentials can never be enumerated.
+      allow list: if false;
+
+      allow update: if isSignedIn() &&
+        deliveryUid == currentUid() &&
+        userData(deliveryUid).role == 'delivery' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'nationalId',
+          'updatedAt'
+        ]) &&
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() > 0 &&
+        request.resource.data.updatedAt is timestamp;
+
+      allow delete: if isSignedIn() &&
+        deliveryUid == currentUid() &&
+        userData(deliveryUid).role == 'delivery';
     }
 
     // ============================================================
@@ -140,7 +263,17 @@ service cloud.firestore {
         request.resource.data.ownerUid == currentUid() &&
         request.resource.data.vendorUid == currentUid() &&
         request.resource.data.storeId == storeId &&
-        request.resource.data.isActive == true;
+        request.resource.data.isActive == true &&
+        // Only a user whose own profile says they are a vendor may open a
+        // marketplace storefront for themselves. Every signed-in user has a
+        // users profile (created at registration), and the users rules do not
+        // let a user change their role afterwards. The null case is tolerated
+        // only for the tiny window before the vendor's own profile write fully
+        // lands; buyers and delivery partners (profiles exist) are blocked.
+        (
+          userData(storeId) == null ||
+          userData(storeId).role == 'vendor'
+        );
 
       // A vendor can read their own store even if the store does not
       // exist yet. This is important because ensureVendorStore()
@@ -233,7 +366,9 @@ service cloud.firestore {
 
     match /orders/{orderId} {
 
-      // Only the authenticated buyer can create an order.
+      // Only the authenticated buyer can create an order, and only from a
+      // vendor who is currently entitled to accept NEW orders (active
+      // subscription, not expired per server-side time).
       allow create: if isSignedIn() &&
         request.resource.data.orderId == orderId &&
         request.resource.data.buyerUid == currentUid() &&
@@ -242,12 +377,53 @@ service cloud.firestore {
         request.resource.data.storeId is string &&
         request.resource.data.orderNumber is string &&
         request.resource.data.status == 'New' &&
-        // Every order must snapshot where it is being delivered. The buyer
+        // The vendor's subscription is checked server-side at order creation.
+        // Existing orders remain fully readable and processable after the
+        // vendor's subscription expires; only NEW orders are gated here.
+        vendorEntitled(userData(request.resource.data.vendorUid)) &&
+        // Every order snapshot is where it is being delivered. The buyer
         // enters this at checkout and it can never change afterwards: no
         // update branch permits writing deliveryLocation.
         request.resource.data.deliveryLocation is map &&
         request.resource.data.deliveryLocation.address is string &&
-        request.resource.data.deliveryLocation.address.size() > 0;
+        request.resource.data.deliveryLocation.address.size() > 0 &&
+        // Every order snapshots the vendor's configured M-PESA payment
+        // methods (Send Money number and/or Buy Goods Till number) at checkout
+        // time. The snapshot is informational and immutable: it is never
+        // compared against live data and no update branch may write it.
+        request.resource.data.paymentVendor is map &&
+        request.resource.data.paymentVendor.keys().hasOnly([
+          'sendMoneyNumber',
+          'tillNumber'
+        ]) &&
+        (
+          request.resource.data.paymentVendor.sendMoneyNumber == null ||
+          request.resource.data.paymentVendor.sendMoneyNumber is string
+        ) &&
+        (
+          request.resource.data.paymentVendor.tillNumber == null ||
+          request.resource.data.paymentVendor.tillNumber is string
+        ) &&
+        // The order starts its lifecycle in a strictly-controlled state. A
+        // buyer cannot craft an order that already looks paid, reported or
+        // verified, nor pre-assign a delivery flow; paymentStatus must start
+        // as 'Pending' with none of the payment-report / verification fields
+        // present, and the delivery fields must be untouched.
+        request.resource.data.deliveryStatus == 'Awaiting Accept' &&
+        request.resource.data.deliveryAccepted == false &&
+        request.resource.data.paymentStatus == 'Pending' &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        request.resource.data.subtotal is number &&
+        request.resource.data.total is number &&
+        !request.resource.data.keys().hasAny([
+          'paymentReported',
+          'paymentReportedAt',
+          'mpesaConfirmationMessage',
+          'paymentVerifiedBy',
+          'paymentVerifiedAt',
+          'paymentVerificationMethod'
+        ]);
 
       // Buyer can read their own orders.
       // Vendor can read orders belonging to their store.
@@ -296,19 +472,37 @@ service cloud.firestore {
             (
               request.resource.data.diff(resource.data)
                 .affectedKeys().hasAny(['status']) == false ||
-              request.resource.data.status in [
-                'Preparing',
-                'Ready for Pickup'
-              ]
+              (
+                request.resource.data.status in [
+                  'Preparing',
+                  'Ready for Pickup'
+                ] &&
+                // The vendor can only move preparation around normal
+                // pre-delivery states; an already-completed (or any later)
+                // order can never be pushed backwards.
+                resource.data.status in [
+                  'New',
+                  'Preparing',
+                  'Ready for Pickup'
+                ]
+              )
             ) &&
 
             (
               request.resource.data.diff(resource.data)
                 .affectedKeys().hasAny(['deliveryStatus']) == false ||
-              request.resource.data.deliveryStatus in [
-                'Preparing Order',
-                'Parcel Ready'
-              ]
+              (
+                request.resource.data.deliveryStatus in [
+                  'Preparing Order',
+                  'Parcel Ready'
+                ] &&
+                resource.data.deliveryStatus in [
+                  'New',
+                  'Awaiting Accept',
+                  'Preparing Order',
+                  'Parcel Ready'
+                ]
+              )
             )
           )
 
@@ -333,32 +527,54 @@ service cloud.firestore {
               'updatedAt'
             ]) &&
 
+            // A rider must never touch an order that has been cancelled;
+            // accepting a stale delivery request must not resurrect an order
+            // the buyer already cancelled.
+            resource.data.status in [
+              'New',
+              'Preparing',
+              'Ready for Pickup',
+              'Out for Delivery'
+            ] &&
+
             (
               request.resource.data.diff(resource.data)
                 .affectedKeys().hasAny(['status']) == false ||
-              request.resource.data.status in [
-                'Out for Delivery',
-                'Completed'
-              ]
+              (
+                request.resource.data.status in [
+                  'Out for Delivery',
+                  'Completed'
+                ] &&
+                orderStatusRank(request.resource.data.status) >=
+                  orderStatusRank(resource.data.status)
+              )
             ) &&
 
             (
               request.resource.data.diff(resource.data)
                 .affectedKeys().hasAny(['deliveryStatus']) == false ||
-              request.resource.data.deliveryStatus in [
-                'Out for Delivery',
-                'Picked Up',
-                'Delivered'
-              ]
+              (
+                request.resource.data.deliveryStatus in [
+                  'Out for Delivery',
+                  'Picked Up',
+                  'Delivered'
+                ] &&
+                deliveryProgressRank(request.resource.data.deliveryStatus) >=
+                  deliveryProgressRank(resource.data.deliveryStatus)
+              )
             ) &&
 
             (
               request.resource.data.diff(resource.data)
                 .affectedKeys().hasAny(['parcelStatus']) == false ||
-              request.resource.data.parcelStatus in [
-                'Picked Up',
-                'Delivered'
-              ]
+              (
+                request.resource.data.parcelStatus in [
+                  'Picked Up',
+                  'Delivered'
+                ] &&
+                parcelStatusRank(request.resource.data.parcelStatus) >=
+                  parcelStatusRank(resource.data.parcelStatus)
+              )
             ) &&
 
             (
@@ -670,20 +886,28 @@ service cloud.firestore {
         (
           request.resource.data.diff(resource.data)
             .affectedKeys().hasAny(['deliveryStatus']) == false ||
-          request.resource.data.deliveryStatus in [
-            'Out for Delivery',
-            'Picked Up',
-            'Delivered'
-          ]
+          (
+            request.resource.data.deliveryStatus in [
+              'Out for Delivery',
+              'Picked Up',
+              'Delivered'
+            ] &&
+            deliveryProgressRank(request.resource.data.deliveryStatus) >=
+              deliveryProgressRank(resource.data.deliveryStatus)
+          )
         ) &&
 
         (
           request.resource.data.diff(resource.data)
             .affectedKeys().hasAny(['parcelStatus']) == false ||
-          request.resource.data.parcelStatus in [
-            'Picked Up',
-            'Delivered'
-          ]
+          (
+            request.resource.data.parcelStatus in [
+              'Picked Up',
+              'Delivered'
+            ] &&
+            parcelStatusRank(request.resource.data.parcelStatus) >=
+              parcelStatusRank(resource.data.parcelStatus)
+          )
         );
     }
   }

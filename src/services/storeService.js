@@ -11,6 +11,8 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { safeOnSnapshot } from './listenerLogging';
+import { fetchUserProfile } from '../context/AuthContext';
+import { TEST_MODE, isVendorSubscribed } from '../utils/testMode';
 
 export const STORES_COLLECTION = 'stores';
 
@@ -205,4 +207,53 @@ export async function updateVendorStore(storeId, updates) {
   cleanUpdates.updatedAt = serverTimestamp();
   await updateDoc(storeDocRef(storeId), cleanUpdates);
   return getStoreById(storeId);
+}
+
+// Whether a listed (active) store should be shown as "Temporarily
+// Unavailable" to buyers. A store stays visible and searchable after its
+// vendor's subscription lapses, but it cannot accept NEW orders. Unavailable
+// is derived from the owning vendor's entitlement, never by mutating the
+// store's own `isActive` flag. If the vendor profile could not be fetched the
+// store is left available (fail-open for reads) rather than hiding a live
+// store on a transient fetch error.
+export function isStoreTemporarilyUnavailable(store, vendorProfile) {
+  if (TEST_MODE) return false;
+  if (!store) return false;
+  if (!vendorProfile) return false;
+  return !isVendorSubscribed(vendorProfile);
+}
+
+// Enriches a list of (active) stores with each store's vendor profile and
+// temporary-unavailability state, used by the buyer store listings. In
+// TEST_MODE nothing is fetched and no store is marked unavailable.
+export async function resolveStoreAvailability(stores) {
+  if (TEST_MODE) {
+    return (stores || []).map((store) => ({ store, vendorProfile: null, unavailable: false }));
+  }
+  return Promise.all(
+    (stores || []).map(async (store) => {
+      const ownerUid = store?.vendorUid ?? store?.ownerUid ?? null;
+      let vendorProfile = null;
+      if (ownerUid) {
+        try {
+          vendorProfile = await fetchUserProfile(ownerUid);
+        } catch (error) {
+          console.warn('[store] fetchUserProfile failed while resolving availability', {
+            role: 'buyer',
+            operation: 'resolveStoreAvailability',
+            collection: 'stores',
+            path: `stores/${store.id ?? ''}`,
+            code: error?.code,
+            message: error?.message,
+          });
+          vendorProfile = null;
+        }
+      }
+      return {
+        store,
+        vendorProfile,
+        unavailable: isStoreTemporarilyUnavailable(store, vendorProfile),
+      };
+    })
+  );
 }

@@ -9,7 +9,7 @@ import { fetchUserProfile } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { onStoreProducts } from '../../services/productService';
 import { getStoreById as getMockStoreById } from '../../services/mockData';
-import { onStore } from '../../services/storeService';
+import { isStoreTemporarilyUnavailable, onStore } from '../../services/storeService';
 import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
@@ -85,7 +85,16 @@ export default function StoreScreen({ navigation, route }) {
     );
   }
 
+  const unavailable = isStoreTemporarilyUnavailable(store, vendorProfile);
+
   const handleAddToCart = (product, quantity) => {
+    if (unavailable) {
+      Alert.alert(
+        'Temporarily Unavailable',
+        'This vendor has an inactive or expired subscription, so they cannot accept new orders right now. Come back after they renew.'
+      );
+      return;
+    }
     addItem(product, quantity, store);
     Alert.alert(
       'Added to Cart',
@@ -138,6 +147,16 @@ export default function StoreScreen({ navigation, route }) {
 
         <Text style={styles.description}>{store.description}</Text>
       </View>
+
+      {unavailable ? (
+        <View style={styles.unavailableBanner}>
+          <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+          <Text style={styles.unavailableText}>
+            This store is temporarily unavailable. The vendor's subscription is
+            inactive or expired, so this store cannot accept new orders.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.products}>
         <Text style={styles.sectionTitle}>Products</Text>
@@ -223,6 +242,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.sm,
     lineHeight: 20,
+  },
+  unavailableBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+  },
+  unavailableText: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: colors.warning,
+    marginLeft: spacing.sm,
+    lineHeight: 18,
   },
   products: {
     padding: spacing.md,

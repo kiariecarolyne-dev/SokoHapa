@@ -12,6 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getVehicleLabel } from '../../utils/vehicleTypes';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES, formatOrderTime } from '../../utils/format';
+import { paymentVendorSummary } from '../../utils/paymentMethods';
 
 export default function VendorOrderDetailsScreen({ navigation, route }) {
   const orderId = route?.params?.orderId;
@@ -215,9 +216,11 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
   const canChooseDelivery = order.status === 'Ready for Pickup';
 
   const buyer = order.identity?.buyer || {};
+  const vendor = order.identity?.vendor || {};
   const delivery = order.assignedDelivery || null;
   const buyerPhone = buyer.phone || order.buyerPhone || null;
   const deliveryDest = normalizeDeliveryLocation(order.deliveryLocation);
+  const destinationSummary = paymentVendorSummary(order.paymentVendor, vendor.phone);
 
   const delivered =
     order.deliveryStatus === 'Delivered' || order.status === 'Completed';
@@ -278,6 +281,17 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
             </Text>
           </View>
         ) : null}
+        {destinationSummary ? (
+          <View style={styles.destinationBlock}>
+            <Text style={styles.paymentLabel}>Your Payment Destination</Text>
+            <Text style={styles.destinationText}>{destinationSummary}</Text>
+            <Text style={styles.destinationNote}>
+              This is the M-PESA account the buyer was shown at checkout. Check
+              the confirmation against a payment you actually received in this
+              account - payments to any other number are NOT valid.
+            </Text>
+          </View>
+        ) : null}
         {paymentVerified ? (
           <Text style={styles.verifiedLine}>
             Payment Verified by Vendor
@@ -302,8 +316,8 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
               color={colors.warning}
             />
             <Text style={styles.compareNoteText}>
-              Buyer-reported payment. Please compare this message with your
-              actual M-PESA transaction before accepting.
+              Buyer-reported payment. Compare the confirmation message with
+              your actual M-PESA transaction before accepting.
             </Text>
           </View>
         ) : null}
@@ -662,6 +676,25 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontStyle: 'italic',
     marginTop: spacing.xs,
+  },
+  destinationBlock: {
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  destinationText: {
+    ...typography.bodySmall,
+    color: colors.primaryDark,
+    fontWeight: '600',
+    marginTop: spacing.xs,
+  },
+  destinationNote: {
+    ...typography.bodySmall,
+    color: colors.primaryDark,
+    marginTop: spacing.xs,
+    lineHeight: 18,
   },
   compareNote: {
     flexDirection: 'row',

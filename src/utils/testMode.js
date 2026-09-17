@@ -47,6 +47,34 @@ import {
   deliveryRequests,
 } from '../services/mockData';
 
+// Milliseconds for a subscription deadline that may be a Firestore Timestamp,
+// a Date, an ISO string or a number; null when not parseable.
+function deadlineMs(value) {
+  if (!value) return null;
+  const ms =
+    typeof value.toMillis === 'function'
+      ? value.toMillis()
+      : typeof value === 'object' && typeof value.getTime === 'function'
+        ? value.getTime()
+        : new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+// The vendor subscription deadline(s) on a profile:
+//   - subscriptionExpiresAt is the canonical production field when present.
+//   - subscriptionExpiryDate is the legacy field written by the existing
+//     Daraja backend callback / dev test endpoints.
+// Returns the newest applicable deadline in milliseconds (or null).
+export function subscriptionExpiryMs(profile) {
+  if (!profile) return null;
+  const expiresAt = deadlineMs(profile.subscriptionExpiresAt);
+  const expiryDate = deadlineMs(profile.subscriptionExpiryDate);
+  if (expiresAt == null && expiryDate == null) return null;
+  if (expiresAt == null) return expiryDate;
+  if (expiryDate == null) return expiresAt;
+  return Math.max(expiresAt, expiryDate);
+}
+
 // True when the vendor's Firestore profile shows an active subscription.
 // The Firestore profile is the source of truth; this helper is intentionally
 // not altered by TEST_MODE.
@@ -54,18 +82,9 @@ export function isVendorSubscribed(profile) {
   if (!profile || profile.subscriptionStatus !== 'active') {
     return false;
   }
-  // Respect an existing expiry date (Firestore Timestamp or ISO/datetime
-  // string) if present. There is currently no code that writes expiry dates,
-  // but this keeps the real expiration rule intact if one is ever set.
-  const expiry = profile.subscriptionExpiryDate;
-  if (expiry) {
-    const expiryMs =
-      typeof expiry.toMillis === 'function'
-        ? expiry.toMillis()
-        : new Date(expiry).getTime();
-    if (Number.isFinite(expiryMs) && expiryMs <= Date.now()) {
-      return false;
-    }
+  const expiryMs = subscriptionExpiryMs(profile);
+  if (expiryMs != null && expiryMs <= Date.now()) {
+    return false;
   }
   return true;
 }
