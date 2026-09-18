@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import BrandHeader from '../../components/BrandHeader';
 import TextField from '../../components/TextField';
 import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
@@ -53,6 +54,8 @@ export default function BuyerRegisterScreen({ navigation }) {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
+          <BrandHeader size="medium" tagline={false} />
+
           <Text style={styles.title}>Buyer Account</Text>
           <Text style={styles.subtitle}>
             Create a buyer account to start shopping on SokoHapa.

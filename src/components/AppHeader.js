@@ -1,9 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../utils/theme';
 
-export default function AppHeader({ title, subtitle, onBack, right }) {
+export default function AppHeader({ title, subtitle, onBack, right, logo }) {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.header}>
@@ -18,10 +18,20 @@ export default function AppHeader({ title, subtitle, onBack, right }) {
           ) : null}
         </View>
         <View style={styles.center}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
+          {logo ? (
+            <Image
+              source={logo}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          ) : (
+            <>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
+            </>
+          )}
         </View>
         <View style={[styles.side, styles.sideRight]}>{right ?? null}</View>
       </View>
@@ -65,5 +75,9 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.bodySmall,
     marginTop: 2,
+  },
+  logo: {
+    width: 84,
+    height: 30,
   },
 });

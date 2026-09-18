@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import BrandHeader from '../../components/BrandHeader';
 import TextField from '../../components/TextField';
 import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
@@ -69,6 +70,8 @@ export default function DeliveryRegisterScreen({ navigation }) {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
+          <BrandHeader size="medium" tagline={false} />
+
           <Text style={styles.title}>Delivery Account</Text>
           <Text style={styles.subtitle}>
             Create a delivery account to start delivering on SokoHapa. Your

@@ -1,16 +1,19 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '../utils/theme';
+
+// Official SokoHapa logo (squared, full-bleed). Rendered with `contain` inside
+// the rounded wrapper so the logo's light canvas blends seamlessly.
+const LOGO_SOURCE = require('../../assets/sokohapa-logo.png');
 
 export default function BrandHeader({ size = 'large', tagline = true }) {
   const isLarge = size === 'large';
   return (
     <View style={styles.container}>
-      <View style={[styles.iconWrap, isLarge && styles.iconWrapLarge]}>
-        <Ionicons
-          name="basket"
-          size={isLarge ? 44 : 30}
-          color={colors.white}
+      <View style={[styles.logoWrap, isLarge && styles.logoWrapLarge]}>
+        <Image
+          source={LOGO_SOURCE}
+          style={[styles.logo, isLarge && styles.logoLarge]}
+          resizeMode="contain"
         />
       </View>
       <Text style={[styles.title, isLarge && styles.titleLarge]}>SokoHapa</Text>
@@ -27,19 +30,28 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
   },
-  iconWrap: {
+  logoWrap: {
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.logoBackground,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     marginBottom: spacing.md,
   },
-  iconWrapLarge: {
+  logoWrapLarge: {
     width: 84,
     height: 84,
     borderRadius: 26,
+  },
+  logo: {
+    width: 52,
+    height: 52,
+  },
+  logoLarge: {
+    width: 84,
+    height: 84,
   },
   title: {
     fontSize: 26,

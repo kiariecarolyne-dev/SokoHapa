@@ -1,6 +1,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import BrandHeader from '../../components/BrandHeader';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 const roles = [
@@ -31,6 +32,7 @@ export default function RegisterRoleScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <BrandHeader size="medium" tagline={false} />
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>How would you like to use SokoHapa?</Text>
       </View>
@@ -66,6 +68,7 @@ const styles = StyleSheet.create({
   header: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
+    alignItems: 'center',
   },
   title: {
     ...typography.title,

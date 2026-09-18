@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +22,8 @@ import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:3000';
 const SUBSCRIPTION_AMOUNT = 100;
 const TRANSACTION_DESC = 'SokoHapa monthly vendor subscription';
+
+const SOKOHAPA_LOGO = require('../../../assets/sokohapa-logo.png');
 
 function normalizeKenyanPhone(raw) {
   if (!raw || typeof raw !== 'string') return null;
@@ -189,8 +192,12 @@ export default function VendorSubscriptionScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="shield-checkmark-outline" size={40} color={colors.primary} />
+          <View style={styles.logoWrap}>
+            <Image
+              source={SOKOHAPA_LOGO}
+              style={styles.logo}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.title}>SokoHapa Vendor Subscription</Text>
           {isSubscribed ? (
@@ -346,14 +353,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.lg,
   },
-  iconWrap: {
+  logoWrap: {
     width: 84,
     height: 84,
     borderRadius: 26,
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.logoBackground,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     marginBottom: spacing.md,
+  },
+  logo: {
+    width: 84,
+    height: 84,
   },
   title: {
     ...typography.title,

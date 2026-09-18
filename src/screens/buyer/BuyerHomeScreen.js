@@ -12,6 +12,8 @@ import { getActiveCategories } from '../../utils/productCatalogue';
 import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
+const SOKOHAPA_LOGO = require('../../../assets/sokohapa-logo.png');
+
 export default function BuyerHomeScreen({ navigation }) {
   const { items } = useCart();
   const { userProfile } = useAuth();
@@ -46,8 +48,7 @@ export default function BuyerHomeScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <AppHeader
-        title="SokoHapa"
-        subtitle="The Market Is Here"
+        logo={SOKOHAPA_LOGO}
         right={
           <View style={styles.headerActions}>
             <TouchableOpacity
