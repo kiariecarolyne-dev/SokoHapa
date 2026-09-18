@@ -7,9 +7,12 @@
     "icon": "./assets/sokohapa-logo.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sokohapa.app"
     },
     "android": {
+      "package": "com.sokohapa.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#F1F6EF",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -19,6 +22,17 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F1F6EF",
+          "image": "./assets/sokohapa-logo.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ]
+    ]
   }
 }
