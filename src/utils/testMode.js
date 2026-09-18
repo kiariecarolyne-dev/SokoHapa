@@ -14,9 +14,10 @@
 //   - It NEVER overwrites `subscriptionStatus`, `subscriptionStartDate`,
 //     `subscriptionExpiryDate`, `premiumPlan`, `premiumUntil` or `isPremium`.
 //   - It NEVER hardcodes every vendor as subscribed.
-//   - It NEVER bypasses M-PESA / international payment processing (there is no
-//     payment processing in this prototype yet; the real subscription screen
-//     remains the gate when TEST_MODE is off).
+//   - It NEVER bypasses M-PESA / international payment processing. Vendor
+//     subscription payments always run through the real Daraja STK Push flow
+//     via the SokoHapa backend (/api/payments/mpesa/stkpush), and subscription
+//     activation is performed ONLY by the backend after a verified callback.
 //   - The underlying real subscription checks stay intact and are the ONLY
 //     ones used when TEST_MODE is disabled.
 //
@@ -105,7 +106,9 @@ export function vendorCanManageStore(profile) {
 // ---- TEST_MODE order & delivery workflow helpers ----
 // Every helper below is a no-op (returns null) unless TEST_MODE is active, so a
 // production / release build (or TEST_MODE_ACTIVE = false) never creates fake
-// orders, fake payments or fake delivery activity.
+// orders or fake delivery activity. There are deliberately NO test-payment
+// helpers here: payment reporting/verification always runs through the real
+// production services so no mock payment path can ever exist.
 
 // Creates a test order from the current cart and makes it visible to BOTH the
 // buyer and vendor order lists. Returns the new order (or null when TEST_MODE).
@@ -210,66 +213,18 @@ export function editOrderTest(orderId, updates) {
   return order;
 }
 
-// Buyer reports a direct M-PESA payment to a test order. Mirrors the real
-// reportPayment rules: only 'New' orders may receive a payment report.
-export function reportPaymentTest(orderId, mpesaConfirmationMessage) {
-  if (!TEST_MODE) return null;
-  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
-  if (!order) return null;
-  if (order.status !== 'New') return null;
-  Object.assign(order, {
-    paymentMethod: 'mpesa_direct',
-    paymentReported: true,
-    paymentReportedAt: new Date().toISOString(),
-    mpesaConfirmationMessage:
-      typeof mpesaConfirmationMessage === 'string'
-        ? mpesaConfirmationMessage.trim()
-        : '',
-    paymentStatus: 'Reported',
-    updatedAt: new Date().toISOString(),
-  });
-  return order;
-}
+// Buyer reports a direct M-PESA payment to a test order.
+// NOTE: there is intentionally NO test variant. The real reportPayment in
+// orderService is the only path that records buyer-to-vendor M-PESA payment
+// reports, matching production behaviour even during development testing.
 
 // Vendor manually verifies a test order's payment report and starts preparing.
-export function verifyVendorPaymentTest(orderId, vendorUid) {
-  if (!TEST_MODE) return null;
-  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
-  if (!order) return null;
-  if (order.status !== 'New' || order.paymentStatus !== 'Reported') return null;
-  Object.assign(order, {
-    paymentStatus: 'Verified',
-    paymentVerifiedBy: vendorUid ?? null,
-    paymentVerifiedAt: new Date().toISOString(),
-    paymentVerificationMethod: 'vendor_manual',
-    status: 'Preparing',
-    deliveryStatus: 'Preparing Order',
-    updatedAt: new Date().toISOString(),
-  });
-  return order;
-}
+// NOTE: there is intentionally NO test variant. Real payment verification runs
+// through verifyVendorPayment in orderService only.
 
 // Vendor rejects a test order's payment report and cancels the order.
-export function rejectVendorPaymentTest(orderId, vendorUid, reason) {
-  if (!TEST_MODE) return null;
-  const order = getBuyerOrderById(orderId) || getVendorOrderById(orderId);
-  if (!order) return null;
-  if (order.status !== 'New' || order.paymentStatus !== 'Reported') return null;
-  Object.assign(order, {
-    paymentStatus: 'Rejected',
-    status: 'Cancelled',
-    deliveryStatus: 'Cancelled',
-    cancelledBy: 'vendor',
-    cancelledByUid: vendorUid ?? null,
-    cancelledAt: new Date().toISOString(),
-    cancelReason:
-      typeof reason === 'string' && reason.trim()
-        ? reason.trim().slice(0, 300)
-        : 'Payment could not be confirmed',
-    updatedAt: new Date().toISOString(),
-  });
-  return order;
-}
+// NOTE: there is intentionally NO test variant. Real payment rejection runs
+// through rejectVendorPayment in orderService only.
 
 // Marks a test delivery completed: updates the order to Completed/Delivered
 // for buyer + vendor, records it in delivery history and clears the active

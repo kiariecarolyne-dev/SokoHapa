@@ -7,7 +7,7 @@ import { getVendorOrderById } from '../../services/mockData';
 import { normalizeDeliveryLocation } from '../../services/deliveryService';
 import { onOrder, rejectVendorPayment, updateOrder, verifyVendorPayment } from '../../services/orderService';
 import { getUnitLabel } from '../../utils/productCatalogue';
-import { TEST_MODE, updateVendorOrderStatus, verifyVendorPaymentTest, rejectVendorPaymentTest } from '../../utils/testMode';
+import { TEST_MODE, updateVendorOrderStatus } from '../../utils/testMode';
 import { useAuth } from '../../context/AuthContext';
 import { getVehicleLabel } from '../../utils/vehicleTypes';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
@@ -89,12 +89,7 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
     if (accepting) return;
     setAccepting(true);
     try {
-      let updated = null;
-      if (TEST_MODE) {
-        updated = verifyVendorPaymentTest(order.id, vendorUid);
-      } else {
-        updated = await verifyVendorPayment(order.id, { vendorUid });
-      }
+      const updated = await verifyVendorPayment(order.id, { vendorUid });
       if (!updated) {
         Alert.alert(
           'Cannot Accept',
@@ -157,15 +152,10 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
     if (rejecting) return;
     setRejecting(true);
     try {
-      let updated = null;
-      if (TEST_MODE) {
-        updated = rejectVendorPaymentTest(order.id, vendorUid, rejectReason);
-      } else {
-        updated = await rejectVendorPayment(order.id, {
-          vendorUid,
-          reason: rejectReason,
-        });
-      }
+      const updated = await rejectVendorPayment(order.id, {
+        vendorUid,
+        reason: rejectReason,
+      });
       if (!updated) {
         Alert.alert(
           'Cannot Reject',

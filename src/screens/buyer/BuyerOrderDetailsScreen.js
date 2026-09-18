@@ -20,7 +20,7 @@ import { getBuyerOrderById } from '../../services/mockData';
 import { normalizeDeliveryLocation } from '../../services/deliveryService';
 import { cancelOrder, onOrder, reportPayment } from '../../services/orderService';
 import { getUnitLabel } from '../../utils/productCatalogue';
-import { TEST_MODE, cancelOrderTest, reportPaymentTest } from '../../utils/testMode';
+import { TEST_MODE, cancelOrderTest } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import {
   formatKES,
@@ -163,23 +163,6 @@ export default function BuyerOrderDetailsScreen({ navigation, route }) {
     }
     setSubmittingPayment(true);
     try {
-      if (TEST_MODE) {
-        const updated = reportPaymentTest(order.id, message);
-        if (!updated) {
-          Alert.alert(
-            'Cannot Report',
-            'This order is no longer New, so its payment report can no longer be changed.'
-          );
-        } else {
-          setOrder({ ...updated });
-          setReportVisible(false);
-          Alert.alert(
-            'Payment Reported',
-            'Your payment report has been sent to the vendor. The vendor will compare your message with their actual M-PESA transaction before accepting the order.'
-          );
-        }
-        return;
-      }
       await reportPayment(order.id, { mpesaConfirmationMessage: message });
       setReportVisible(false);
       Alert.alert(

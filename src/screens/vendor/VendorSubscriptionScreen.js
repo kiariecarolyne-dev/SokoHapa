@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +20,7 @@ import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:3000';
 const SUBSCRIPTION_AMOUNT = 100;
-const isDevBuild = typeof __DEV__ === 'boolean' && __DEV__;
+const TRANSACTION_DESC = 'SokoHapa monthly vendor subscription';
 
 function normalizeKenyanPhone(raw) {
   if (!raw || typeof raw !== 'string') return null;
@@ -51,8 +52,8 @@ export default function VendorSubscriptionScreen({ navigation }) {
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  const [devLoading, setDevLoading] = useState(false);
   const [liveProfile, setLiveProfile] = useState(userProfile);
 
   const subscription = liveProfile || userProfile;
@@ -91,6 +92,7 @@ export default function VendorSubscriptionScreen({ navigation }) {
         const valid = !expiryMsVal || expiryMsVal > Date.now();
         if (valid) {
           setStatusMessage('');
+          setPending(false);
         }
       }
     });
@@ -98,7 +100,7 @@ export default function VendorSubscriptionScreen({ navigation }) {
   }, [currentUser?.uid]);
 
   const handleSubscribe = async () => {
-    if (loading) return;
+    if (loading || pending) return;
 
     const normalized = normalizeKenyanPhone(phoneNumber);
     if (!normalized) {
@@ -123,13 +125,7 @@ export default function VendorSubscriptionScreen({ navigation }) {
         body: JSON.stringify({
           phoneNumber: normalized,
           amount: SUBSCRIPTION_AMOUNT,
-          // Renewal hint: when the vendor already has a (possibly expired)
-          // subscription, pass the current entitlement deadline so the backend
-          // can extend from it by one calendar month instead of accidentally
-          // shortening the vendor's coverage. Sent only when a deadline exists.
-          ...(Number.isFinite(expiryMs)
-            ? { previousExpiry: Math.round(expiryMs) }
-            : {}),
+          transactionDesc: TRANSACTION_DESC,
         }),
       });
 
@@ -149,6 +145,12 @@ export default function VendorSubscriptionScreen({ navigation }) {
         return;
       }
 
+      // Safaricom accepted the STK Push: a prompt is on the vendor's phone.
+      // The subscription is NOT active yet — the backend activates it only
+      // after the Daraja callback verifies the payment. Keep this screen in a
+      // pending state until the Firestore subscription listener sees the
+      // backend write subscriptionStatus 'active'.
+      setPending(true);
       setStatusMessage(
         'M-Pesa payment prompt sent. Check your phone and enter your M-Pesa PIN.'
       );
@@ -159,6 +161,7 @@ export default function VendorSubscriptionScreen({ navigation }) {
         message: error?.message || 'Network error',
       });
       setStatusMessage('');
+      setPending(false);
       Alert.alert(
         'Network Error',
         'Could not reach the payment server. Please check your connection and try again.'
@@ -168,56 +171,18 @@ export default function VendorSubscriptionScreen({ navigation }) {
     }
   };
 
+  const handleCancelPending = () => {
+    if (loading) return;
+    setPending(false);
+    setStatusMessage('');
+  };
+
   const handleContinue = () => {
     navigation.replace('Dashboard');
   };
 
   const handleLogout = async () => {
     await logout();
-  };
-
-  const handleDevActivate = async () => {
-    if (devLoading) return;
-    setDevLoading(true);
-    try {
-      const response = await fetch(`${BACKEND_URL}/test/subscription`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendorUid: currentUser.uid }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        Alert.alert('Test Failed', result.error || 'Could not activate test subscription.');
-      } else {
-        Alert.alert('Test Active', 'Test subscription activated. The UI will update automatically.');
-      }
-    } catch (error) {
-      Alert.alert('Network Error', 'Could not reach the backend server.');
-    } finally {
-      setDevLoading(false);
-    }
-  };
-
-  const handleDevReset = async () => {
-    if (devLoading) return;
-    setDevLoading(true);
-    try {
-      const response = await fetch(`${BACKEND_URL}/test/subscription/reset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendorUid: currentUser.uid }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        Alert.alert('Reset Failed', result.error || 'Could not reset test subscription.');
-      } else {
-        Alert.alert('Subscription Reset', 'Subscription set to inactive. The UI will update automatically.');
-      }
-    } catch (error) {
-      Alert.alert('Network Error', 'Could not reach the backend server.');
-    } finally {
-      setDevLoading(false);
-    }
   };
 
   return (
@@ -305,20 +270,33 @@ export default function VendorSubscriptionScreen({ navigation }) {
                 title={
                   loading
                     ? 'Processing…'
-                    : expiredPreviously
-                      ? 'Renew with M-Pesa'
-                      : 'Subscribe with M-Pesa'
+                    : pending
+                      ? 'Waiting for Payment…'
+                      : expiredPreviously
+                        ? 'Renew with M-Pesa'
+                        : 'Subscribe with M-Pesa'
                 }
-                icon={loading ? undefined : 'phone-portrait-outline'}
+                icon={loading || pending ? undefined : 'phone-portrait-outline'}
                 onPress={handleSubscribe}
-                disabled={loading}
+                disabled={loading || pending}
               />
-              {loading ? (
+              {loading || pending ? (
                 <ActivityIndicator
                   size="small"
                   color={colors.primary}
                   style={styles.spinner}
                 />
+              ) : null}
+              {pending ? (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleCancelPending}
+                  style={styles.pendingCancel}
+                >
+                  <Text style={styles.pendingCancelText}>
+                    Haven't received the prompt? Dismiss this and try again.
+                  </Text>
+                </TouchableOpacity>
               ) : null}
             </View>
           </>
@@ -342,32 +320,6 @@ export default function VendorSubscriptionScreen({ navigation }) {
             subscription cannot sell or receive orders.
           </Text>
         </View>
-
-        {isDevBuild && (
-          <View style={styles.devSection}>
-            <Text style={styles.devTitle}>DEV Controls</Text>
-            <Text style={styles.devHint}>
-              Development only — not visible in production builds.
-            </Text>
-            <View style={styles.devButtons}>
-              <PrimaryButton
-                title="DEV: Activate Test Subscription"
-                variant="outline"
-                onPress={handleDevActivate}
-                disabled={devLoading}
-              />
-              <PrimaryButton
-                title="DEV: Reset Subscription"
-                variant="danger"
-                onPress={handleDevReset}
-                disabled={devLoading}
-              />
-            </View>
-            {devLoading ? (
-              <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
-            ) : null}
-          </View>
-        )}
 
         <PrimaryButton
           title="Logout"
@@ -522,6 +474,16 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: spacing.sm,
   },
+  pendingCancel: {
+    alignSelf: 'center',
+    marginTop: spacing.sm,
+  },
+  pendingCancelText: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   infoCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -537,27 +499,5 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginLeft: spacing.sm,
     lineHeight: 20,
-  },
-  devSection: {
-    backgroundColor: colors.warningLight,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.warning,
-  },
-  devTitle: {
-    ...typography.subtitle,
-    fontSize: 14,
-    color: colors.warning,
-  },
-  devHint: {
-    ...typography.bodySmall,
-    color: colors.warning,
-    marginTop: 2,
-    marginBottom: spacing.md,
-  },
-  devButtons: {
-    gap: spacing.sm,
   },
 });
