@@ -83,6 +83,41 @@ service cloud.firestore {
              s.isActive == true;
     }
 
+    // Matches the order's immutable `paymentVendor` snapshot against the
+    // vendor's currently-configured M-PESA methods (users/{vendorUid}.
+    // mpesaPaymentMethods). For every method the vendor HAS configured, the
+    // buyer-written snapshot must agree exactly with the configured value;
+    // methods the vendor has NOT configured fall back to the vendor's own
+    // profile/store phone at checkout, which rules cannot verify because phone
+    // normalization happens client-side. The identity.vendor.uid anchor on the
+    // order still binds the whole vendor block (and thus any fallback
+    // destination) to the genuine vendor account.
+    //
+    // NOTE: Firestore Rules functions may contain only `let` declarations
+    // followed by a single `return` expression - no if/else or early returns -
+    // so the consistency checks are expressed with ternaries.
+    function paymentVendorSnapshotMatches(pv, vendorUid) {
+      let m = userData(vendorUid) != null
+        ? userData(vendorUid).mpesaPaymentMethods
+        : null;
+      let configured = m != null && m is map;
+      let sendMoneyMatches = configured
+        ? !(m.sendMoneyNumber is string &&
+            m.sendMoneyNumber.size() > 0 &&
+            pv.sendMoneyNumber != m.sendMoneyNumber)
+        : true;
+      let tillMatches = configured
+        ? !(m.tillNumber is string &&
+            m.tillNumber.size() > 0 &&
+            pv.tillNumber != m.tillNumber)
+        : true;
+      return sendMoneyMatches &&
+             tillMatches &&
+             pv.keys().hasOnly(['sendMoneyNumber', 'tillNumber']) &&
+             (pv.sendMoneyNumber == null || pv.sendMoneyNumber is string) &&
+             (pv.tillNumber == null || pv.tillNumber is string);
+    }
+
     // Ranks used to enforce that order and assignment state machines can only
     // move FORWARD (or re-save the same state, so idempotent re-writes still
     // pass). Unknown or earlier states map to 0 so a forward write from any
@@ -143,7 +178,25 @@ service cloud.firestore {
           request.resource.data.role != 'vendor' ||
           request.resource.data.subscriptionStatus == 'inactive' ||
           request.resource.data.subscriptionStatus == null
-        );
+        ) &&
+        // Registration writes exactly this field set (AuthContext.register);
+        // anything else is rejected so the profile shape stays strict.
+        request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'role',
+          'fullName',
+          'phone',
+          'profilePhoto',
+          'createdAt',
+          'updatedAt',
+          'storeName',
+          'subscriptionStatus',
+          'subscriptionStartDate',
+          'subscriptionExpiryDate',
+          'vehicleType',
+          'vehiclePlateNumber'
+        ]);
 
       // IMPORTANT:
       // Users can read:
@@ -162,13 +215,15 @@ service cloud.firestore {
            resource.data.role == 'vendor')
         );
 
-      // Only delivery profiles can be queried as a directory.
-      // This is required by ChooseDeliveryScreen.
-      // NOTE: request.query exposes only limit/offset/orderBy in the rules
-      // engine, so the allowed query is enforced per returned document.
+      // Only a VENDOR may query the delivery directory. Restricting the list
+      // to the vendor role prevents any other signed-in user from enumerating
+      // every delivery partner's whole profile document. The only consumer is
+      // the vendor's ChooseDeliveryScreen (creating a delivery request).
       allow list: if isSignedIn() &&
         resource.data != null &&
-        resource.data.role == 'delivery';
+        resource.data.role == 'delivery' &&
+        userData(currentUid()) != null &&
+        userData(currentUid()).role == 'vendor';
 
       // Users can only update their own profile.
       // Only these fields may be changed.
@@ -264,6 +319,12 @@ service cloud.firestore {
         request.resource.data.vendorUid == currentUid() &&
         request.resource.data.storeId == storeId &&
         request.resource.data.isActive == true &&
+        request.resource.data.status in ['Open', 'Closed'] &&
+        // rating is a fixed default placeholder on creation (5.0) and can
+        // never be changed afterwards - no update branch permits it.
+        request.resource.data.rating is number &&
+        request.resource.data.rating >= 1 &&
+        request.resource.data.rating <= 5 &&
         // Only a user whose own profile says they are a vendor may open a
         // marketplace storefront for themselves. Every signed-in user has a
         // users profile (created at registration), and the users rules do not
@@ -302,6 +363,8 @@ service cloud.firestore {
 
       // Vendor can update only their own store.
       // Ownership fields cannot be changed.
+      // `rating` is deliberately NOT writable: the buyer-facing rating is a
+      // server-side/display value, never something a vendor may set themselves.
       allow update: if isStoreOwner(storeId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'name',
@@ -311,10 +374,19 @@ service cloud.firestore {
           'profilePhoto',
           'vendorName',
           'status',
-          'rating',
           'isActive',
           'updatedAt'
-        ]);
+        ]) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['status']) == false ||
+          request.resource.data.status in ['Open', 'Closed']
+        ) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['isActive']) == false ||
+          request.resource.data.isActive is bool
+        );
 
       // Vendor can delete only their own store.
       allow delete: if isStoreOwner(storeId);
@@ -336,11 +408,32 @@ service cloud.firestore {
         );
 
       // Vendor can create products only in their own store.
+      // Prices and quantities must be sane non-negative numbers and the
+      // availability flags must be booleans - a vendor cannot plant strings,
+      // negatives or absurd magnitudes that would then be summed at checkout.
       allow create: if isStoreOwner(storeId) &&
         request.resource.data.storeId == storeId &&
-        request.resource.data.productId == productId;
+        request.resource.data.productId == productId &&
+        request.resource.data.price is number &&
+        request.resource.data.price >= 0 &&
+        (
+          request.resource.data.availableQuantity == null ||
+          (
+            request.resource.data.availableQuantity is number &&
+            request.resource.data.availableQuantity >= 0
+          )
+        ) &&
+        (
+          request.resource.data.isAvailable == null ||
+          request.resource.data.isAvailable is bool
+        ) &&
+        (
+          request.resource.data.available == null ||
+          request.resource.data.available is bool
+        );
 
       // Vendor can update only permitted product fields.
+      // The same numeric/boolean bounds apply to every field that is changed.
       allow update: if isStoreOwner(storeId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'price',
@@ -354,7 +447,49 @@ service cloud.firestore {
           'description',
           'category',
           'updatedAt'
-        ]);
+        ]) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['price', 'pricePerKg']) == false ||
+          (
+            (
+              request.resource.data.price == null ||
+              (
+                request.resource.data.price is number &&
+                request.resource.data.price >= 0
+              )
+            ) &&
+            (
+              request.resource.data.pricePerKg == null ||
+              (
+                request.resource.data.pricePerKg is number &&
+                request.resource.data.pricePerKg >= 0
+              )
+            )
+          )
+        ) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['availableQuantity']) == false ||
+          (
+            request.resource.data.availableQuantity is number &&
+            request.resource.data.availableQuantity >= 0
+          )
+        ) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['isAvailable', 'available']) == false ||
+          (
+            (
+              request.resource.data.isAvailable == null ||
+              request.resource.data.isAvailable is bool
+            ) &&
+            (
+              request.resource.data.available == null ||
+              request.resource.data.available is bool
+            )
+          )
+        );
 
       // Vendor can delete only their own products.
       allow delete: if isStoreOwner(storeId);
@@ -404,6 +539,13 @@ service cloud.firestore {
           request.resource.data.paymentVendor.tillNumber == null ||
           request.resource.data.paymentVendor.tillNumber is string
         ) &&
+        // The vendor block on an order can never be fabricated: identity.vendor
+        // must reference the real vendor, and the paymentVendor snapshot must
+        // agree with the vendor's stored M-PESA configuration wherever the
+        // vendor has actually configured a method.
+        request.resource.data.identity.vendor.uid == request.resource.data.vendorUid &&
+        paymentVendorSnapshotMatches(request.resource.data.paymentVendor,
+          request.resource.data.vendorUid) &&
         // The order starts its lifecycle in a strictly-controlled state. A
         // buyer cannot craft an order that already looks paid, reported or
         // verified, nor pre-assign a delivery flow; paymentStatus must start
@@ -592,13 +734,16 @@ service cloud.firestore {
           // --------------------------------------------------------
           // BUYER CANCELS THEIR OWN NEW ORDER
           // --------------------------------------------------------
-          // A buyer may cancel only an order they own that is still 'New'.
-          // Only cancellation bookkeeping fields may change; the order can
-          // never move to any status other than 'Cancelled'.
+          // A buyer may cancel only an order they own that is still 'New' and
+          // that no delivery partner has accepted yet. Once a rider has
+          // accepted, the cancellation is handled through the delivery flow
+          // instead. Only cancellation bookkeeping fields may change; the
+          // order can never move to any status other than 'Cancelled'.
 
           (
             resource.data.buyerUid == currentUid() &&
             resource.data.status == 'New' &&
+            resource.data.deliveryAccepted == false &&
             request.resource.data.status == 'Cancelled' &&
             request.resource.data.deliveryStatus == 'Cancelled' &&
 
@@ -623,6 +768,10 @@ service cloud.firestore {
           (
             resource.data.buyerUid == currentUid() &&
             resource.data.status == 'New' &&
+            // Once the buyer has reported their M-PESA payment the monetary
+            // contents are frozen - the total the vendor is about to confirm
+            // can never be silently re-quantified afterwards.
+            resource.data.paymentStatus == 'Pending' &&
             request.resource.data.status == 'New' &&
             request.resource.data.items is list &&
             request.resource.data.items.size() > 0 &&
@@ -752,8 +901,12 @@ service cloud.firestore {
         orderData(request.resource.data.orderId) != null &&
         orderData(request.resource.data.orderId).vendorUid == currentUid() &&
         // Delivery can never start until the vendor has manually verified the
-        // buyer's direct M-PESA payment report.
+        // buyer's direct M-PESA payment report AND physically prepared the
+        // parcel (order status 'Ready for Pickup'). Both preconditions are
+        // read from the order document, never from the request payload.
         orderData(request.resource.data.orderId).paymentStatus == 'Verified' &&
+        orderData(request.resource.data.orderId).status == 'Ready for Pickup' &&
+        orderData(request.resource.data.orderId).deliveryAccepted != true &&
         request.resource.data.vendorUid == currentUid() &&
         request.resource.data.deliveryUid is string &&
         request.resource.data.status == 'Awaiting Accept' &&
@@ -764,7 +917,32 @@ service cloud.firestore {
         request.resource.data.deliveryLocation.address is string &&
         orderData(request.resource.data.orderId).deliveryLocation != null &&
         request.resource.data.deliveryLocation.address ==
-          orderData(request.resource.data.orderId).deliveryLocation.address;
+          orderData(request.resource.data.orderId).deliveryLocation.address &&
+        // The request snapshot is a fixed shape produced by
+        // deliveryService.createDeliveryRequest; anything else is rejected.
+        request.resource.data.keys().hasOnly([
+          'requestId',
+          'orderId',
+          'orderNumber',
+          'vendorUid',
+          'buyerUid',
+          'deliveryUid',
+          'vendor',
+          'buyer',
+          'pickupLocation',
+          'deliveryLocation',
+          'distanceKm',
+          'items',
+          'packaging',
+          'packagingFee',
+          'subtotal',
+          'total',
+          'deliveryStatus',
+          'deliveryAccepted',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]);
 
       // Rider can read their own request.
       // Vendor can read requests belonging to their orders.
@@ -805,6 +983,11 @@ service cloud.firestore {
 
             request.resource.data.status == 'Accepted' &&
 
+            // A rider must never accept a request whose order was cancelled
+            // (e.g. the buyer cancelled before assignment was created).
+            orderData(resource.data.orderId) != null &&
+            orderData(resource.data.orderId).status != 'Cancelled' &&
+
             (
               request.resource.data.diff(resource.data)
                 .affectedKeys().hasAny(['deliveryUid']) == false ||
@@ -844,6 +1027,10 @@ service cloud.firestore {
         requestData(request.resource.data.requestId) != null &&
         requestData(request.resource.data.requestId).deliveryUid == currentUid() &&
         requestData(request.resource.data.requestId).orderId == orderId &&
+        // An assignment can never be minted for a cancelled order (a stale
+        // 'Awaiting Accept' request must not resurrect a cancelled order).
+        orderData(orderId) != null &&
+        orderData(orderId).status != 'Cancelled' &&
         request.resource.data.status == 'Confirmed' &&
         // The assignment inherits the order's snapshotted destination; a
         // rider cannot invent a delivery address on an assignment.
@@ -868,6 +1055,10 @@ service cloud.firestore {
       allow update: if isSignedIn() &&
         resource.data != null &&
         resource.data.deliveryUid == currentUid() &&
+        // A rider can never advance (or fabricate completion on) an assignment
+        // whose order has been cancelled.
+        orderData(orderId) != null &&
+        orderData(orderId).status != 'Cancelled' &&
 
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'parcelStatus',
