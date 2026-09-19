@@ -20,7 +20,7 @@ export const IS_EXPO_GO =
 // Skipped (and harmless) inside Expo Go, where remote push is unavailable.
 if (IS_EXPO_GO) {
   console.warn(
-    '[Push] Remote push notifications are disabled in Expo Go on SDK 53+. Use a development build or APK.'
+    '[Push Notifications] Disabled in Expo Go on SDK 53+. Real push notifications will active in standalone/development builds.'
   );
 } else {
   Notifications.setNotificationHandler({
