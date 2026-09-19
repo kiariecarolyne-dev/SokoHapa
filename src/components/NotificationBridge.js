@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import * as Notifications from 'expo-notifications';
 
 import { useAuth } from '../context/AuthContext';
 import { navigationRef } from '../utils/navigationRef';
@@ -117,6 +116,7 @@ export default function NotificationBridge() {
   useEffect(() => {
     if (IS_EXPO_GO) return undefined;
     try {
+      const Notifications = require('expo-notifications');
       return Notifications.addPushTokenListener(({ data }) => {
         const uid = lastUidRef.current;
         if (!uid || typeof data !== 'string') return;
@@ -135,6 +135,7 @@ export default function NotificationBridge() {
   useEffect(() => {
     if (IS_EXPO_GO) return undefined;
     try {
+      const Notifications = require('expo-notifications');
       return Notifications.addNotificationResponseReceivedListener(
         (response) => {
           const data = extractNotificationData(response);
@@ -157,6 +158,7 @@ export default function NotificationBridge() {
     let cancelled = false;
     (async () => {
       try {
+        const Notifications = require('expo-notifications');
         const response = await Notifications.getLastNotificationResponseAsync();
         if (cancelled || !response) return;
         const data = extractNotificationData(response);

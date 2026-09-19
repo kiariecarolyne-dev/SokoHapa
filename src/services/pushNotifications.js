@@ -1,4 +1,3 @@
-import * as Notifications from 'expo-notifications';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -7,17 +6,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from './firebase';
 
 // Remote push notifications (device push tokens, Expo push tokens and the
-// token/push events) were removed from Expo Go on Android with SDK 53. The
-// native expo-notifications calls below THROW inside Expo Go, so every native
-// call is gated on the execution environment. Inside Expo Go the app skips
-// push registration/listeners entirely and continues working normally; use a
-// development build or standalone APK to test real push notifications.
+// token/push events) were removed from Expo Go on Android with SDK 53.
+// Additionally, importing 'expo-notifications' runs module-level side effects
+// that THROW inside Expo Go on Android: build/index.js pulls in
+// DevicePushTokenAutoRegistration.fx, whose top level auto-subscribes to the
+// push token emitter and that throws on import. So the module is loaded lazily
+// ONLY outside Expo Go; inside Expo Go it is never imported and the app boots
+// normally. Use a development build or standalone APK for real pushes.
 export const IS_EXPO_GO =
   Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
+// Non-null only in standalone / development builds. Never loaded in Expo Go,
+// so no expo-notifications code runs there at all.
+let Notifications = null;
+if (!IS_EXPO_GO) {
+  Notifications = require('expo-notifications');
+}
+
 // Shows a heads-up banner and plays the default sound while the app is in the
 // foreground. Required on Android 7+ and iOS before notifications render.
-// Skipped (and harmless) inside Expo Go, where remote push is unavailable.
+// Skipped inside Expo Go, where remote push is unavailable.
 if (IS_EXPO_GO) {
   console.warn(
     '[Push Notifications] Disabled in Expo Go on SDK 53+. Real push notifications will active in standalone/development builds.'
