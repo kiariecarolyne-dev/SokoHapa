@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { currentVendor, getStoreById } from '../../services/mockData';
 import { onStoreProducts } from '../../services/productService';
 import { ensureVendorStore, onStore } from '../../services/storeService';
+import { formatVendorLocation } from '../../utils/format';
 import { TEST_MODE } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
@@ -80,7 +81,9 @@ export default function VendorStoreScreen({ navigation }) {
 
         <View style={styles.metaRow}>
           <Ionicons name="location-outline" size={16} color={colors.textMuted} />
-          <Text style={styles.meta}>{store?.location || 'Add your store location'}</Text>
+          <Text style={styles.meta}>
+            {formatVendorLocation(store) || 'Add your store location'}
+          </Text>
         </View>
         <View style={styles.metaRow}>
           <Ionicons name="star" size={16} color={colors.accent} />

@@ -6,13 +6,14 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { fetchUserProfile, useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { currentUserProfile, getStoreById as getMockStoreById } from '../../services/mockData';
-import { getStoreById as getRealStoreById } from '../../services/storeService';
+import { getStoreById as getRealStoreById, isStoreTemporarilyUnavailable } from '../../services/storeService';
 import { createOrder, generateOrderNumber } from '../../services/orderService';
 import { formatUnitQuantity } from '../../utils/productCatalogue';
 import { TEST_MODE, placeTestOrder } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 import {
+  buildOrderPaymentVendorSnapshot,
   buildPaymentMethodRows,
   normalizeVendorPaymentMethods,
 } from '../../utils/paymentMethods';
@@ -237,13 +238,25 @@ export default function CheckoutScreen({ navigation }) {
     }
 
     // Snapshot the vendor's current M-PESA payment methods onto the order.
-    // Prefer the configured Send Money / Buy Goods Till details from the
-    // vendor profile; fall back to the store phone as the Send Money number
-    // so a vendor who has configured nothing keeps a working pay method.
-    const paymentVendor = normalizeVendorPaymentMethods(
+    // Always a fixed { sendMoneyNumber, tillNumber } map (never null) using the
+    // vendor's configured values verbatim, falling back to the store phone as
+    // the Send Money number. The display card still renders normalized numbers
+    // via buildPaymentMethodRows.
+    const paymentVendor = buildOrderPaymentVendorSnapshot(
       sellerProfile?.mpesaPaymentMethods || null,
       store?.phone || sellerProfile?.phone || ''
     );
+
+    // The rules gate NEW orders on the vendor being entitled (active, unexpired
+    // subscription). Mirror that server-side check here so the buyer sees a
+    // clear message instead of the cryptic Firestore permission denial.
+    if (!TEST_MODE && isStoreTemporarilyUnavailable(store, sellerProfile)) {
+      Alert.alert(
+        'Vendor Unavailable',
+        'This store is not accepting new orders right now because the vendor subscription is not active. Please try again later or order from another store.'
+      );
+      return;
+    }
 
     const orderItems = items.map((item) => ({
       id: item.id,

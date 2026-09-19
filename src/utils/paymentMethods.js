@@ -32,6 +32,34 @@ export function normalizeVendorPaymentMethods(config = {}, fallbackPhone = null)
   };
 }
 
+// Builds the immutable `paymentVendor` snapshot attached to an order at
+// checkout. The Firestore rules require paymentVendor to ALWAYS be a map with
+// exactly the two keys sendMoneyNumber/tillNumber and to agree exactly with the
+// vendor's stored M-PESA configuration, so this:
+//   - keeps the configured values VERBATIM (raw stored strings): the rules
+//     compare pv.sendMoneyNumber != stored.sendMoneyNumber, and a verbatim copy
+//     passes whether the stored config was saved app-normalized or seeded
+//     externally with formatting;
+//   - falls back to the vendor's phone as the Send Money number when nothing is
+//     configured (same fallback as normalizeVendorPaymentMethods);
+//   - ALWAYS returns the fixed { sendMoneyNumber, tillNumber } shape and never
+//     null, so the rules' `paymentVendor is map` and keys().hasOnly(...)
+//     checks can never fail. A null key means no usable destination exists.
+//
+// Buyer-facing displays still normalize on READ via buildPaymentMethodRows, so
+// a clean number is always shown/copied regardless of how it is stored.
+export function buildOrderPaymentVendorSnapshot(config = null, fallbackPhone = null) {
+  const m = config && typeof config === 'object' ? config : {};
+  const fallback =
+    typeof fallbackPhone === 'string' ? fallbackPhone.trim() : '';
+  return {
+    sendMoneyNumber:
+      typeof m.sendMoneyNumber === 'string' ? m.sendMoneyNumber : fallback || null,
+    tillNumber:
+      typeof m.tillNumber === 'string' ? m.tillNumber : null,
+  };
+}
+
 // Rows used for the buyer-facing payment displays. The order snapshot is the
 // primary source; the legacy vendor phone (identity.vendor.phone) is the
 // fallback so older orders without a paymentVendor snapshot still show a

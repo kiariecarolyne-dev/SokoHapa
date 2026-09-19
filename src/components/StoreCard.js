@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing, typography } from '../utils/theme';
+import { formatVendorLocation } from '../utils/format';
 import { getProfilePhotoUrl } from '../services/profilePhotoService';
 import ImagePlaceholder from './ImagePlaceholder';
 
 export default function StoreCard({ store, onPress, unavailable = false }) {
   const [photoError, setPhotoError] = useState(false);
   const photoUri = getProfilePhotoUrl(store.profilePhoto);
+  const locationLabel = formatVendorLocation(store);
   const statusLabel = unavailable ? 'Temporarily Unavailable' : store.status || 'Open';
   const statusColor = unavailable
     ? colors.warning
@@ -43,7 +45,7 @@ export default function StoreCard({ store, onPress, unavailable = false }) {
         <View style={styles.metaRow}>
           <Ionicons name="location-outline" size={12} color={colors.textMuted} />
           <Text style={styles.meta} numberOfLines={1}>
-            {store.location || 'Location not provided'}
+            {locationLabel || 'Location not provided'}
           </Text>
         </View>
         <View style={styles.metaRow}>

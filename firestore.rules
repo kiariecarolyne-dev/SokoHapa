@@ -57,10 +57,16 @@ service cloud.firestore {
     // honoured when present. NOTE: both must be Firestore Timestamps; a string
     // value cannot participate in a timestamp comparison and therefore the
     // vendor is NOT treated as entitled (fail-closed).
+    //
+    // IMPORTANT: a Map without a key makes that field undefined (not null),
+    // so reading it directly raises a rules evaluation error that Firestore
+    // reports as 'permission-denied'. Each expiry field is therefore guarded
+    // with a key-presence check first and only compared when present.
     function vendorEntitled(profile) {
       return profile != null &&
              profile.subscriptionStatus == 'active' &&
              (
+               !('subscriptionExpiryDate' in profile) ||
                profile.subscriptionExpiryDate == null ||
                (
                  profile.subscriptionExpiryDate is timestamp &&
@@ -68,6 +74,7 @@ service cloud.firestore {
                )
              ) &&
              (
+               !('subscriptionExpiresAt' in profile) ||
                profile.subscriptionExpiresAt == null ||
                (
                  profile.subscriptionExpiresAt is timestamp &&
@@ -97,7 +104,15 @@ service cloud.firestore {
     // followed by a single `return` expression - no if/else or early returns -
     // so the consistency checks are expressed with ternaries.
     function paymentVendorSnapshotMatches(pv, vendorUid) {
-      let m = userData(vendorUid) != null
+      // NOTE: like the expiry fields, a map without a given key makes that
+      // field undefined (not null), so reading it directly would raise a
+      // rules evaluation error reported as 'permission-denied'. The key is
+      // therefore checked for presence before the read, and an absent (or
+      // null) methods map is treated exactly like an unconfigured vendor:
+      // the consistency checks are skipped and the (never-comparable) snapshot
+      // is still anchored to the order's identity.vendor block.
+      let m = userData(vendorUid) != null &&
+              'mpesaPaymentMethods' in userData(vendorUid)
         ? userData(vendorUid).mpesaPaymentMethods
         : null;
       let configured = m != null && m is map;
@@ -370,6 +385,7 @@ service cloud.firestore {
           'name',
           'description',
           'location',
+          'vendorLocation',
           'phone',
           'profilePhoto',
           'vendorName',
@@ -386,6 +402,11 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['isActive']) == false ||
           request.resource.data.isActive is bool
+        ) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['vendorLocation']) == false ||
+          request.resource.data.vendorLocation is map
         );
 
       // Vendor can delete only their own store.

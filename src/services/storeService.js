@@ -191,6 +191,7 @@ export async function updateVendorStore(storeId, updates) {
     'name',
     'description',
     'location',
+    'vendorLocation',
     'phone',
     'profilePhoto',
     'vendorName',

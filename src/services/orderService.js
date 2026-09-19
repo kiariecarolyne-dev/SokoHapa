@@ -10,8 +10,9 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { safeOnSnapshot } from './listenerLogging';
+import { buildOrderPaymentVendorSnapshot } from '../utils/paymentMethods';
 
 export const ORDERS_COLLECTION = 'orders';
 export const DELIVERY_PAYMENT_METHOD = { CASH: 'cash' };
@@ -72,7 +73,13 @@ export function generateOrderNumber(now = new Date()) {
   return `SH-${stamp}${suffix}`;
 }
 
-export async function createOrder({
+// The single canonical builder for the order-create payload. createOrder()
+// writes EXACTLY the object returned here (with the generated orderId), so the
+// __DEV__ diagnostics and the document sent to Firestore can never diverge.
+// Every field is either required by the orders `allow create` rule, consumed
+// later in the order lifecycle by the permitted update branches, or starts
+// null and is only ever populated by those branches.
+export function buildCanonicalOrderRecord({
   buyerUid,
   vendorUid,
   storeId,
@@ -120,7 +127,7 @@ export async function createOrder({
     profilePhoto: vendor?.profilePhoto ?? null,
   };
 
-  const record = {
+  return {
     orderId: '',
     orderNumber,
     buyerUid,
@@ -144,17 +151,263 @@ export async function createOrder({
     deliveryLocation: deliveryLocation || null,
     // Snapshot of the vendor's configured M-PESA payment methods at checkout.
     // Captured once and immutable - no update branch in the rules writes it,
-    // so it stays linked to the numbers the buyer actually paid to.
-    paymentVendor: paymentVendor || null,
+    // so it stays linked to the numbers the buyer actually paid to. Always a
+    // fixed { sendMoneyNumber, tillNumber } map (never null) so the rules'
+    // `paymentVendor is map` / keys().hasOnly(...) checks always pass.
+    paymentVendor: buildOrderPaymentVendorSnapshot(paymentVendor),
     assignedDeliveryPerson: null,
     assignedDelivery: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
+}
+
+// Reports the dotted path of every `undefined` value anywhere in a payload
+// tree. Development-only: an undefined value is dropped (or rejected) by the
+// Firestore SDK before the request reaches the rules engine, so a rules check
+// like `request.resource.data.orderId == orderId` can fail even when the
+// locally-constructed object appears to hold the value. Firestore value
+// sentinels (serverTimestamp()) are treated as leaves and never descended.
+const SKIP_UNDEFINED_SCAN_KEYS = new Set(['createdAt', 'updatedAt']);
+export function findUndefinedPaths(value, path = '', out = []) {
+  if (value === undefined) {
+    out.push(path || '(root)');
+    return out;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((child, index) =>
+      findUndefinedPaths(child, `${path}[${index}]`, out)
+    );
+  } else if (value !== null && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) {
+      if (SKIP_UNDEFINED_SCAN_KEYS.has(key)) continue;
+      const nextPath = path ? `${path}.${key}` : key;
+      findUndefinedPaths(child, nextPath, out);
+    }
+  }
+  return out;
+}
+
+export async function createOrder({
+  buyerUid,
+  vendorUid,
+  storeId,
+  orderNumber,
+  items,
+  subtotal,
+  packaging = null,
+  packagingFee = 0,
+  total,
+  buyer = null,
+  vendor = null,
+  delivery = null,
+  deliveryLocation = null,
+  paymentVendor = null,
+}) {
+  const record = buildCanonicalOrderRecord({
+    buyerUid,
+    vendorUid,
+    storeId,
+    orderNumber,
+    items,
+    subtotal,
+    packaging,
+    packagingFee,
+    total,
+    buyer,
+    vendor,
+    delivery,
+    deliveryLocation,
+    paymentVendor,
+  });
 
   const ref = doc(ordersCollectionRef());
   record.orderId = ref.id;
-  await setDoc(ref, record);
+
+  // The orders `allow create` rule evaluates the order against the vendor's
+  // ACTUAL Firestore document: vendorEntitled reads users/{vendorUid}.
+  // subscription* fields and paymentVendorSnapshotMatches compares the order's
+  // paymentVendor to users/{vendorUid}.mpesaPaymentMethods. Re-read that same
+  // document here and rebuild the immutable snapshot from it so the payload
+  // always conforms to the rule, whatever the calling screen captured earlier
+  // (a stale or normalized snapshot can otherwise disagree with the stored
+  // configuration and get denied).
+  let liveVendor = null;
+  try {
+    const vendorSnap = await getDoc(doc(db, 'users', vendorUid));
+    liveVendor = vendorSnap.exists() ? vendorSnap.data() : null;
+  } catch (error) {
+    liveVendor = null;
+  }
+
+  if (liveVendor) {
+    // Configured values are snapshotted VERBATIM because the rule requires an
+    // exact match against the stored config. The checkout-supplied snapshot is
+    // reused only as the Send Money fallback (store phone) when the vendor has
+    // configured no Send Money number themselves; for unconfigured methods the
+    // rule skips the comparison so the fallback stays legal.
+    const prior =
+      paymentVendor && typeof paymentVendor === 'object' ? paymentVendor : {};
+    const fallbackPhone =
+      typeof prior.sendMoneyNumber === 'string' && prior.sendMoneyNumber.trim()
+        ? prior.sendMoneyNumber.trim()
+        : liveVendor.phone || null;
+    record.paymentVendor = buildOrderPaymentVendorSnapshot(
+      liveVendor.mpesaPaymentMethods || null,
+      fallbackPhone
+    );
+    if (!record.identity.vendor.phone) {
+      record.identity.vendor.phone = liveVendor.phone || '';
+    }
+  } else {
+    // Vendor document unreadable: keep the calling screen's snapshot. The
+    // rules still fail closed on vendorEntitled, which is the correct security
+    // behaviour when the vendor cannot be verified.
+    record.paymentVendor = buildOrderPaymentVendorSnapshot(paymentVendor);
+  }
+
+  if (__DEV__) {
+    // Development-only diagnostics. Never shipped in production builds
+    // (__DEV__ is false there). No passwords, tokens, M-Pesa PINs, private
+    // keys or Firebase secrets are logged - only the order payload fields and
+    // the vendor profile fields the app already reads to render checkout.
+    const debugAuthUid = auth?.currentUser?.uid ?? null;
+    if (debugAuthUid) {
+      console.log('[DEBUG AUTH UID]', debugAuthUid);
+    }
+
+    // Recursive scan for `undefined` anywhere inside the EXACT object that
+    // setDoc(ref, record) will serialize. An undefined value is stripped (or
+    // rejected) by the SDK before the rules engine runs, so it can silently
+    // void a rule condition while the local object still looks complete.
+    const undefinedPaths = findUndefinedPaths(record);
+
+    const timestampType = (value) =>
+      value != null && typeof value?.toMillis === 'function'
+        ? `Timestamp(${new Date(value.toMillis()).toISOString()})`
+        : `missing (${typeof value})`;
+
+    const storedPv = liveVendor?.mpesaPaymentMethods ?? null;
+    const configured = storedPv != null && typeof storedPv === 'object';
+    const pv = record.paymentVendor ?? {};
+    const sendMoneyMatches = configured
+      ? !(
+          typeof storedPv.sendMoneyNumber === 'string' &&
+          storedPv.sendMoneyNumber.length > 0 &&
+          pv.sendMoneyNumber !== storedPv.sendMoneyNumber
+        )
+      : true;
+    const tillMatches = configured
+      ? !(
+          typeof storedPv.tillNumber === 'string' &&
+          storedPv.tillNumber.length > 0 &&
+          pv.tillNumber !== storedPv.tillNumber
+        )
+      : true;
+
+    const vendorDoc = liveVendor
+      ? {
+          uid: liveVendor.uid ?? vendorUid,
+          role: liveVendor.role ?? null,
+          subscriptionStatus: liveVendor.subscriptionStatus ?? null,
+          subscriptionExpiryDate: timestampType(liveVendor.subscriptionExpiryDate),
+          subscriptionExpiresAt: timestampType(liveVendor.subscriptionExpiresAt),
+          mpesaPaymentMethods: liveVendor.mpesaPaymentMethods ?? null,
+          phone: liveVendor.phone ?? '',
+          relatedStoreId: storeId,
+        }
+      : { exists: false, vendorUid: vendorUid ?? null };
+
+    const vendorEntitledCheck =
+      liveVendor != null &&
+      liveVendor.subscriptionStatus === 'active' &&
+      (liveVendor.subscriptionExpiryDate == null ||
+        (typeof liveVendor.subscriptionExpiryDate?.toMillis === 'function' &&
+          liveVendor.subscriptionExpiryDate.toMillis() > Date.now())) &&
+      (liveVendor.subscriptionExpiresAt == null ||
+        (typeof liveVendor.subscriptionExpiresAt?.toMillis === 'function' &&
+          liveVendor.subscriptionExpiresAt.toMillis() > Date.now()));
+
+    const paidOrVerifiedFields = [
+      'paymentReported',
+      'paymentReportedAt',
+      'mpesaConfirmationMessage',
+      'paymentVerifiedBy',
+      'paymentVerifiedAt',
+      'paymentVerificationMethod',
+    ];
+
+    const checklist = {
+      'request.auth != null': debugAuthUid != null,
+      'orderId == path orderId': record.orderId === ref.id,
+      'buyerUid == auth uid': record.buyerUid === debugAuthUid,
+      'identity.buyer.uid == auth uid': record.identity?.buyer?.uid === debugAuthUid,
+      'vendorUid is string': typeof record.vendorUid === 'string',
+      'storeId is string': typeof record.storeId === 'string',
+      'orderNumber is string': typeof record.orderNumber === 'string',
+      "status == 'New'": record.status === 'New',
+      'vendorEntitled(userData(vendorUid))': vendorEntitledCheck,
+      'deliveryLocation is map':
+        record.deliveryLocation != null && typeof record.deliveryLocation === 'object',
+      'deliveryLocation.address non-empty string':
+        typeof record.deliveryLocation?.address === 'string' &&
+        record.deliveryLocation.address.length > 0,
+      'paymentVendor is map': pv != null && typeof pv === 'object',
+      'paymentVendor keys only [sendMoneyNumber, tillNumber]':
+        pv != null &&
+        Object.keys(pv).length === 2 &&
+        Object.keys(pv).every((key) => key === 'sendMoneyNumber' || key === 'tillNumber'),
+      'paymentVendor.sendMoneyNumber null-or-string':
+        pv.sendMoneyNumber == null || typeof pv.sendMoneyNumber === 'string',
+      'paymentVendor.tillNumber null-or-string':
+        pv.tillNumber == null || typeof pv.tillNumber === 'string',
+      'identity.vendor.uid == vendorUid': record.identity?.vendor?.uid === record.vendorUid,
+      'paymentVendorSnapshotMatches': sendMoneyMatches && tillMatches,
+      "deliveryStatus == 'Awaiting Accept'": record.deliveryStatus === 'Awaiting Accept',
+      'deliveryAccepted == false': record.deliveryAccepted === false,
+      "paymentStatus == 'Pending'": record.paymentStatus === 'Pending',
+      'items is non-empty list':
+        Array.isArray(record.items) && record.items.length > 0,
+      'subtotal is number':
+        typeof record.subtotal === 'number' && Number.isFinite(record.subtotal),
+      'total is number': typeof record.total === 'number' && Number.isFinite(record.total),
+      'no prohibited payment-report fields': !Object.keys(record).some((key) =>
+        paidOrVerifiedFields.includes(key)
+      ),
+      'no undefined values in payload': undefinedPaths.length === 0,
+    };
+
+    const failures = Object.entries(checklist).filter(([, ok]) => !ok);
+
+    console.log('[DEBUG FINAL ORDER KEYS]', JSON.stringify(Object.keys(record).sort()));
+    console.log(
+      '[DEBUG ORDER UNDEFINED FIELDS]',
+      undefinedPaths.length > 0 ? JSON.stringify(undefinedPaths) : '[]'
+    );
+    console.log('[DEBUG ORDER PAYLOAD]', JSON.stringify(record, null, 2));
+    console.log('[DEBUG VENDOR DOC]', JSON.stringify(vendorDoc, null, 2));
+    console.log('[DEBUG CLIENT PAYLOAD CHECKLIST]', JSON.stringify(checklist, null, 2));
+    console.log(
+      '[DEBUG CLIENT PAYLOAD FAILURES]',
+      failures.length > 0
+        ? JSON.stringify(failures.map(([name]) => name), null, 2)
+        : 'NONE - client-side payload conditions all satisfied (NOT a Firestore Rules evaluation; server may still reject)'
+    );
+  }
+
+  try {
+    await setDoc(ref, record);
+  } catch (error) {
+    if (__DEV__) {
+      console.log('[ORDER CREATE ERROR]', {
+        code: error?.code ?? null,
+        message: error?.message ?? null,
+        path: `orders/${ref.id}`,
+        documentId: ref.id,
+      });
+    }
+    throw error;
+  }
   return { id: ref.id, ...record };
 }
 

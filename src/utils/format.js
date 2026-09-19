@@ -1,3 +1,19 @@
+// Composes a vendor's structured location (vendorLocation: {area, town,
+// county}) into a single "Area, Town, County" line. Falls back to the legacy
+// free-text `location` field when the structured map is missing or empty.
+// Returns null when no usable location is present.
+export function formatVendorLocation(source) {
+  const loc = source?.vendorLocation;
+  if (loc && typeof loc === 'object') {
+    const parts = [loc.area, loc.town, loc.county].filter(
+      (part) => part && String(part).trim().length > 0
+    );
+    if (parts.length > 0) return parts.join(', ');
+  }
+  const legacy = source?.location;
+  return legacy && String(legacy).trim().length > 0 ? String(legacy) : null;
+}
+
 export function formatKES(amount) {
   const rounded = Math.round(amount || 0);
   const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');

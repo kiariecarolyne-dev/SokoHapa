@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import TextField from '../../components/TextField';
@@ -8,8 +8,9 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
 import { ensureVendorStore, onStore, updateVendorStore } from '../../services/storeService';
 import { getProfilePhotoUrl, uploadProfilePhoto } from '../../services/profilePhotoService';
+import { formatVendorLocation } from '../../utils/format';
 import { TEST_MODE } from '../../utils/testMode';
-import { colors, spacing } from '../../utils/theme';
+import { colors, spacing, typography } from '../../utils/theme';
 
 export default function EditVendorStoreScreen({ navigation }) {
   const { currentUser, userProfile } = useAuth();
@@ -19,7 +20,9 @@ export default function EditVendorStoreScreen({ navigation }) {
   const [storeDescription, setStoreDescription] = useState(
     TEST_MODE ? 'Fresh vegetables and fruits from our family farm.' : ''
   );
-  const [storeLocation, setStoreLocation] = useState(TEST_MODE ? 'Kiambu Road, Nairobi' : '');
+  const [locationArea, setLocationArea] = useState(TEST_MODE ? 'Kiambu Road' : '');
+  const [locationTown, setLocationTown] = useState(TEST_MODE ? 'Nairobi' : '');
+  const [locationCounty, setLocationCounty] = useState(TEST_MODE ? 'Nairobi County' : '');
   const [storePhotoPath, setStorePhotoPath] = useState(null);
   const [uploading, setUploading] = useState(false);
 
@@ -47,7 +50,9 @@ export default function EditVendorStoreScreen({ navigation }) {
       if (storeDoc) {
         setStoreName(storeDoc.name ?? '');
         setStoreDescription(storeDoc.description ?? '');
-        setStoreLocation(storeDoc.location ?? '');
+        setLocationArea(storeDoc.vendorLocation?.area ?? '');
+        setLocationTown(storeDoc.vendorLocation?.town ?? '');
+        setLocationCounty(storeDoc.vendorLocation?.county ?? '');
         setStorePhotoPath(storeDoc.profilePhoto ?? userProfile?.profilePhoto ?? null);
       }
     });
@@ -119,11 +124,24 @@ export default function EditVendorStoreScreen({ navigation }) {
       Alert.alert('Missing details', 'Please enter a store name.');
       return;
     }
+    const area = locationArea.trim();
+    const town = locationTown.trim();
+    const county = locationCounty.trim();
+    if (!area || !town || !county) {
+      Alert.alert(
+        'Incomplete location',
+        'Please enter Area, Town / City and County so buyers can find your store.'
+      );
+      return;
+    }
+    const vendorLocation = { area, town, county };
+    const location = formatVendorLocation({ vendorLocation });
     try {
       await updateVendorStore(storeId, {
         name: storeName.trim(),
         description: storeDescription.trim(),
-        location: storeLocation.trim(),
+        vendorLocation,
+        location,
         profilePhoto: storePhotoPath,
       });
       Alert.alert('Store Saved', 'Your store details have been updated.', [
@@ -160,13 +178,30 @@ export default function EditVendorStoreScreen({ navigation }) {
             multiline
             icon="document-text"
           />
+          <Text style={styles.sectionLabel}>Vendor Location</Text>
           <TextField
-            label="Store Location"
-            value={storeLocation}
-            onChangeText={setStoreLocation}
-            placeholder="e.g. Stage ya Zamani, Malindi"
+            label="Area"
+            value={locationArea}
+            onChangeText={setLocationArea}
+            placeholder="e.g. Soko la Zamani"
             autoCapitalize="words"
             icon="location"
+          />
+          <TextField
+            label="Town / City"
+            value={locationTown}
+            onChangeText={setLocationTown}
+            placeholder="e.g. Malindi"
+            autoCapitalize="words"
+            icon="location-outline"
+          />
+          <TextField
+            label="County"
+            value={locationCounty}
+            onChangeText={setLocationCounty}
+            placeholder="e.g. Kilifi County"
+            autoCapitalize="words"
+            icon="map-outline"
           />
           <PhotoField
             label="Store Image"
@@ -193,5 +228,13 @@ const styles = StyleSheet.create({
   scroll: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  sectionLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
   },
 });

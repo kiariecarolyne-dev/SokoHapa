@@ -12,6 +12,7 @@ import { getStoreById as getMockStoreById } from '../../services/mockData';
 import { isStoreTemporarilyUnavailable, onStore } from '../../services/storeService';
 import { TEST_MODE } from '../../utils/testMode';
 import { formatUnitQuantity } from '../../utils/productCatalogue';
+import { formatVendorLocation } from '../../utils/format';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function StoreScreen({ navigation, route }) {
@@ -112,6 +113,11 @@ export default function StoreScreen({ navigation, route }) {
     profilePhoto: vendorProfile?.profilePhoto ?? store.profilePhoto ?? null,
   };
 
+  const locationLabel =
+    formatVendorLocation(store) ||
+    formatVendorLocation(vendorProfile) ||
+    'Location not provided';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
       <ImagePlaceholder icon="storefront-outline" iconSize={52} style={styles.storeImage} />
@@ -131,10 +137,11 @@ export default function StoreScreen({ navigation, route }) {
           <StatusBadge label={store.status || 'Open'} />
         </View>
 
-        <View style={styles.metaRow}>
+        <View style={styles.locationRow}>
           <Ionicons name="location-outline" size={16} color={colors.textMuted} />
-          <Text style={styles.meta}>{vendor.location}</Text>
+          <Text style={styles.locationLabel}>Vendor Location</Text>
         </View>
+        <Text style={styles.meta}>{locationLabel}</Text>
         <View style={styles.metaRow}>
           <Ionicons name="star" size={16} color={colors.accent} />
           <Text style={styles.meta}>{store.rating} rating</Text>
@@ -234,9 +241,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  locationLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginLeft: spacing.sm,
+    textTransform: 'uppercase',
+  },
   meta: {
     ...typography.bodySmall,
     marginLeft: spacing.sm,
+    marginTop: 2,
   },
   description: {
     ...typography.bodySmall,
