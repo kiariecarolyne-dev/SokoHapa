@@ -14,7 +14,7 @@ import {
   onActiveDelivery,
   toActiveDelivery,
 } from '../../services/deliveryService';
-import { getUnitLabel } from '../../utils/productCatalogue';
+import { formatUnitQuantity } from '../../utils/productCatalogue';
 import { TEST_MODE, completeTestDelivery } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
@@ -309,7 +309,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
           ? delivery.items.map((line, index) => (
               <View key={index} style={styles.itemRow}>
                 <Text style={styles.itemName} numberOfLines={1}>
-                  {line.quantity} {getUnitLabel(line.unit || 'kg')} × {line.name}
+                  {formatUnitQuantity(line.quantity, line.unit)} × {line.name}
                 </Text>
                 <Text style={styles.itemTotal}>
                   {formatKES(line.quantity * line.pricePerKg)}

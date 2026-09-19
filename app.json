@@ -32,6 +32,12 @@
           "imageWidth": 220,
           "resizeMode": "contain"
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#16A34A"
+        }
       ]
     ],
     "extra": {

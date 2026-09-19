@@ -1,5 +1,6 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { navigationRef } from '../utils/navigationRef';
 
 import LoadingScreen from '../components/LoadingScreen';
 import AuthNavigator from './AuthNavigator';
@@ -15,7 +16,7 @@ export default function AppNavigator() {
   const { currentUser, userRole, loading } = useAuth();
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       {loading ? (
         <LoadingScreen />
       ) : !currentUser ? (

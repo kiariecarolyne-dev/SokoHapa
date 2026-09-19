@@ -6,7 +6,11 @@ import PhotoField from '../../components/PhotoField';
 import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
 import {
+  VENDOR_UNIT_OPTIONS,
   getActiveCategories,
+  getUnitLabel,
+  getUnitShortLabel,
+  isAllowedSellingUnit,
 } from '../../utils/productCatalogue';
 import {
   categories,
@@ -37,6 +41,7 @@ export default function EditProductScreen({ navigation, route }) {
   const [loaded, setLoaded] = useState(false);
 
   const categoryOptions = TEST_MODE ? categories : getActiveCategories().map((c) => c.categoryName);
+  const unitOptions = VENDOR_UNIT_OPTIONS.map((option) => option.code);
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState(categoryOptions[0] ?? 'Other');
@@ -44,6 +49,7 @@ export default function EditProductScreen({ navigation, route }) {
   const [priceText, setPriceText] = useState('');
   const [quantityText, setQuantityText] = useState('');
   const [available, setAvailable] = useState(true);
+  const [unit, setUnit] = useState('kg');
 
   useEffect(() => {
     if (TEST_MODE) {
@@ -57,6 +63,7 @@ export default function EditProductScreen({ navigation, route }) {
         setPriceText(mockProduct.pricePerKg != null ? String(mockProduct.pricePerKg) : '');
         setQuantityText(mockProduct.availableQuantity != null ? String(mockProduct.availableQuantity) : '');
         setAvailable(mockProduct.available ?? true);
+        setUnit(isAllowedSellingUnit(mockProduct.unit) ? mockProduct.unit : 'kg');
       }
       setLoaded(true);
       return;
@@ -93,6 +100,7 @@ export default function EditProductScreen({ navigation, route }) {
           setPriceText(p.pricePerKg != null ? String(p.pricePerKg) : '');
           setQuantityText(p.availableQuantity != null ? String(p.availableQuantity) : '');
           setAvailable(p.available ?? true);
+          setUnit(isAllowedSellingUnit(p.unit) ? p.unit : 'kg');
         }
         setLoaded(true);
       })
@@ -145,6 +153,18 @@ export default function EditProductScreen({ navigation, route }) {
     );
   }
 
+  const handleUnitSelect = (nextUnit) => {
+    if (nextUnit === unit) return;
+    Alert.alert(
+      'Change Selling Unit?',
+      `Changing the selling unit from ${getUnitLabel(unit)} to ${getUnitLabel(nextUnit)} changes what the listed price means.\n\nThe price is for ONE ${getUnitLabel(nextUnit)} and will NOT be adjusted automatically (e.g. KES 80 → KES 80 / ${getUnitShortLabel(nextUnit)}).`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Change Unit', onPress: () => setUnit(nextUnit) },
+      ]
+    );
+  };
+
   const handleSave = async () => {
     if (!canManageStore) {
       requireSubscription();
@@ -165,6 +185,11 @@ export default function EditProductScreen({ navigation, route }) {
       return;
     }
 
+    if (!isAllowedSellingUnit(unit)) {
+      Alert.alert('Choose a unit', 'Please select a valid selling unit (Piece, Kg or Bunch).');
+      return;
+    }
+
     if (TEST_MODE) {
       updateVendorStoreProduct('store-1', product.id, {
         name: name.trim(),
@@ -172,6 +197,7 @@ export default function EditProductScreen({ navigation, route }) {
         pricePerKg: price,
         availableQuantity: quantity,
         available,
+        unit,
       });
       Alert.alert('Changes Saved', 'Your store product has been updated.', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -191,6 +217,7 @@ export default function EditProductScreen({ navigation, route }) {
         price,
         availableQuantity: quantity,
         available,
+        unit,
       });
       Alert.alert('Changes Saved', 'Your store product has been updated.', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -289,6 +316,27 @@ export default function EditProductScreen({ navigation, route }) {
             keyboardType="number-pad"
             icon="pricetag"
           />
+
+          <Text style={styles.label}>Selling Unit</Text>
+          <View style={styles.chipRow}>
+            {unitOptions.map((option) => {
+              const active = unit === option;
+              return (
+                <View key={option}>
+                  <Text
+                    onPress={() => handleUnitSelect(option)}
+                    style={[styles.chip, active && styles.chipActive, { color: active ? colors.white : colors.textSecondary }]}
+                  >
+                    {getUnitLabel(option)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+          <Text style={styles.unitHint}>
+            The price above is for ONE {getUnitLabel(unit)} (e.g. KES 80 / {getUnitShortLabel(unit)}).
+          </Text>
+
           <TextField
             label="Available Quantity"
             value={quantityText}
@@ -370,6 +418,11 @@ const styles = StyleSheet.create({
   chipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  unitHint: {
+    ...typography.bodySmall,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   spacer: {
     height: spacing.md,

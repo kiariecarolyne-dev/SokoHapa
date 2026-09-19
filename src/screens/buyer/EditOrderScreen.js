@@ -12,7 +12,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { getBuyerOrderById, getStoreById } from '../../services/mockData';
 import { editOrder, onOrder } from '../../services/orderService';
 import { getStoreProducts } from '../../services/productService';
-import { getUnitLabel } from '../../utils/productCatalogue';
+import { formatUnitQuantity, getUnitShortLabel } from '../../utils/productCatalogue';
 import { TEST_MODE, editOrderTest } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
@@ -340,7 +340,7 @@ export default function EditOrderScreen({ navigation, route }) {
                       {item.name}
                     </Text>
                     <Text style={styles.itemMeta}>
-                      {formatKES(item.pricePerKg)} / {getUnitLabel(item.unit || 'kg')}
+                      {formatKES(item.pricePerKg)} / {getUnitShortLabel(item.unit || 'kg')}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -361,7 +361,7 @@ export default function EditOrderScreen({ navigation, route }) {
                       <Ionicons name="remove" size={14} color={colors.text} />
                     </TouchableOpacity>
                     <Text style={styles.stepValue}>
-                      {item.quantity} {getUnitLabel(item.unit || 'kg')}
+                      {formatUnitQuantity(item.quantity, item.unit || 'kg')}
                     </Text>
                     <TouchableOpacity
                       activeOpacity={0.7}
@@ -377,7 +377,7 @@ export default function EditOrderScreen({ navigation, route }) {
                 </View>
                 {capped ? (
                   <Text style={styles.capHint}>
-                    Only {product.availableQuantity} {getUnitLabel(product.unit || 'kg')} available.
+                    Only {formatUnitQuantity(product.availableQuantity, product.unit || 'kg')} available.
                   </Text>
                 ) : null}
               </View>
@@ -400,7 +400,7 @@ export default function EditOrderScreen({ navigation, route }) {
                     {product.name}
                   </Text>
                   <Text style={styles.itemMeta}>
-                    {formatKES(product.pricePerKg)} / {getUnitLabel(product.unit || 'kg')}
+                    {formatKES(product.pricePerKg)} / {getUnitShortLabel(product.unit || 'kg')}
                   </Text>
                 </View>
                 <Ionicons name="add-circle-outline" size={22} color={colors.primary} />

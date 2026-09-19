@@ -8,7 +8,7 @@ import { useCart } from '../../context/CartContext';
 import { currentUserProfile, getStoreById as getMockStoreById } from '../../services/mockData';
 import { getStoreById as getRealStoreById } from '../../services/storeService';
 import { createOrder, generateOrderNumber } from '../../services/orderService';
-import { getUnitLabel } from '../../utils/productCatalogue';
+import { formatUnitQuantity } from '../../utils/productCatalogue';
 import { TEST_MODE, placeTestOrder } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
@@ -344,9 +344,14 @@ export default function CheckoutScreen({ navigation }) {
         <View style={styles.card}>
           {items.map((item) => (
             <View key={item.id} style={styles.itemRow}>
-              <Text style={styles.itemName} numberOfLines={1}>
-                {item.quantity} {getUnitLabel(item.unit || 'kg')} × {item.name}
-              </Text>
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={styles.itemMeta}>
+                  {formatUnitQuantity(item.quantity, item.unit)} × {formatKES(item.pricePerKg)}
+                </Text>
+              </View>
               <Text style={styles.itemTotal}>{formatKES(item.pricePerKg * item.quantity)}</Text>
             </View>
           ))}
@@ -556,13 +561,21 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  itemName: {
+  itemInfo: {
     flex: 1,
+    marginRight: spacing.md,
+  },
+  itemName: {
     fontSize: 14,
     color: colors.text,
-    marginRight: spacing.md,
+  },
+  itemMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   itemTotal: {
     fontSize: 14,

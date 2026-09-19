@@ -15,7 +15,7 @@ import {
   buildVendorProductRecord,
   storeProductDocPath,
 } from '../utils/vendorProducts';
-import { getMasterProductById } from '../utils/productCatalogue';
+import { getMasterProductById, getUnitLabel, isAllowedSellingUnit } from '../utils/productCatalogue';
 
 export function storeProductsCollectionRef(storeId) {
   return collection(db, 'stores', storeId, 'products');
@@ -110,6 +110,9 @@ export async function addMasterProductToStore({
   if (!storeId || !masterProductId) {
     throw new Error('addMasterProductToStore: storeId and masterProductId are required');
   }
+  if (unit != null && !isAllowedSellingUnit(unit)) {
+    throw new Error(`addMasterProductToStore: unit "${unit}" is not an allowed selling unit`);
+  }
   const masterProduct = getMasterProductById(masterProductId);
   if (!masterProduct) {
     throw new Error(`addMasterProductToStore: unknown master product "${masterProductId}"`);
@@ -157,6 +160,9 @@ export async function addCustomProductToStore({
 }) {
   if (!storeId || !nameEnglish || !nameEnglish.trim()) {
     throw new Error('addCustomProductToStore: storeId and nameEnglish are required');
+  }
+  if (unit != null && !isAllowedSellingUnit(unit)) {
+    throw new Error(`addCustomProductToStore: unit "${unit}" is not an allowed selling unit`);
   }
   const productId = `${slugify(nameEnglish) || 'product'}-${Date.now().toString().slice(-6)}`;
   const record = buildCustomProductRecord({
@@ -214,6 +220,12 @@ export async function updateVendorProduct(storeId, productId, updates) {
   if ('isAvailable' in cleanUpdates) cleanUpdates.available = cleanUpdates.isAvailable;
   if ('available' in cleanUpdates) cleanUpdates.isAvailable = cleanUpdates.available;
   if ('name' in cleanUpdates && cleanUpdates.name) cleanUpdates.displayName = cleanUpdates.name;
+  if ('unit' in cleanUpdates) {
+    if (!isAllowedSellingUnit(cleanUpdates.unit)) {
+      throw new Error(`updateVendorProduct: unit "${cleanUpdates.unit}" is not an allowed selling unit`);
+    }
+    cleanUpdates.unitLabel = getUnitLabel(cleanUpdates.unit);
+  }
   cleanUpdates.updatedAt = serverTimestamp();
   await updateDoc(productDocRef(storeId, productId), cleanUpdates);
   return getProductById(storeId, productId);

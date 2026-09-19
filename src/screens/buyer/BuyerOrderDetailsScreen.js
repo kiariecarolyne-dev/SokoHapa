@@ -19,7 +19,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { getBuyerOrderById } from '../../services/mockData';
 import { normalizeDeliveryLocation } from '../../services/deliveryService';
 import { cancelOrder, onOrder, reportPayment } from '../../services/orderService';
-import { getUnitLabel } from '../../utils/productCatalogue';
+import { formatUnitQuantity } from '../../utils/productCatalogue';
 import { TEST_MODE, cancelOrderTest } from '../../utils/testMode';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import {
@@ -410,8 +410,7 @@ export default function BuyerOrderDetailsScreen({ navigation, route }) {
               <View>
                 <Text style={styles.itemName}>{item.name}</Text>
                 <Text style={styles.itemMeta}>
-                  {item.quantity} {getUnitLabel(item.unit || 'kg')} x{' '}
-                  {formatKES(item.pricePerKg)}
+                  {formatUnitQuantity(item.quantity, item.unit)} × {formatKES(item.pricePerKg)}
                 </Text>
               </View>
               <Text style={styles.itemTotal}>

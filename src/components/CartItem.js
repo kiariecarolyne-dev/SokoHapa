@@ -2,12 +2,11 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../utils/theme';
 import ImagePlaceholder from './ImagePlaceholder';
-import { getMasterProductById, getUnitLabel, resolveProductImage } from '../utils/productCatalogue';
+import { getMasterProductById, formatUnitQuantity, getUnitShortLabel, resolveProductImage } from '../utils/productCatalogue';
 import { formatKES } from '../utils/format';
 
 export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
   const itemTotal = item.pricePerKg * item.quantity;
-  const unitLabel = getUnitLabel(item.unit || 'kg');
 
   const masterProduct = item.masterProductId ? getMasterProductById(item.masterProductId) : null;
   const image = masterProduct ? resolveProductImage(masterProduct) : null;
@@ -23,7 +22,7 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
         <View style={styles.topRow}>
           <View style={styles.titleWrap}>
             <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.price}>{formatKES(item.pricePerKg)} / {unitLabel}</Text>
+            <Text style={styles.price}>{formatKES(item.pricePerKg)} / {getUnitShortLabel(item.unit || 'kg')}</Text>
           </View>
           <TouchableOpacity activeOpacity={0.7} onPress={onRemove} hitSlop={8}>
             <Ionicons name="trash-outline" size={17} color={colors.danger} />
@@ -34,7 +33,7 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
             <TouchableOpacity activeOpacity={0.7} onPress={onDecrease} style={styles.stepBtn}>
               <Ionicons name="remove" size={14} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.stepValue}>{item.quantity} {unitLabel}</Text>
+            <Text style={styles.stepValue}>{formatUnitQuantity(item.quantity, item.unit || 'kg')}</Text>
             <TouchableOpacity activeOpacity={0.7} onPress={onIncrease} style={styles.stepBtn}>
               <Ionicons name="add" size={14} color={colors.text} />
             </TouchableOpacity>

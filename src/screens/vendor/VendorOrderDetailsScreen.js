@@ -6,7 +6,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { getVendorOrderById } from '../../services/mockData';
 import { normalizeDeliveryLocation } from '../../services/deliveryService';
 import { onOrder, rejectVendorPayment, updateOrder, verifyVendorPayment } from '../../services/orderService';
-import { getUnitLabel } from '../../utils/productCatalogue';
+import { formatUnitQuantity } from '../../utils/productCatalogue';
 import { TEST_MODE, updateVendorOrderStatus } from '../../utils/testMode';
 import { useAuth } from '../../context/AuthContext';
 import { getVehicleLabel } from '../../utils/vehicleTypes';
@@ -368,7 +368,7 @@ export default function VendorOrderDetailsScreen({ navigation, route }) {
           <View key={index} style={styles.itemRow}>
             <View>
               <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemMeta}>{item.quantity} {getUnitLabel(item.unit || 'kg')} × {formatKES(item.pricePerKg)}</Text>
+              <Text style={styles.itemMeta}>{formatUnitQuantity(item.quantity, item.unit)} × {formatKES(item.pricePerKg)}</Text>
             </View>
             <Text style={styles.itemTotal}>{formatKES(item.quantity * item.pricePerKg)}</Text>
           </View>

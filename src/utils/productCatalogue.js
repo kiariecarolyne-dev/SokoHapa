@@ -21,7 +21,7 @@ import { PRODUCT_CATEGORIES, getCategoryById } from '../services/masterCategorie
 // Codes are the canonical values stored in master product `availableUnits`,
 // vendor product `unit`, and (in future) cart/order line items.
 export const PRODUCT_UNIT_OPTIONS = [
-  { code: 'kg', label: 'Kilogram (kg)' },
+  { code: 'kg', label: 'Kg' },
   { code: 'piece', label: 'Piece' },
   { code: 'dozen', label: 'Dozen' },
   { code: 'bunch', label: 'Bunch' },
@@ -37,6 +37,45 @@ const PRODUCT_UNIT_INDEX = Object.fromEntries(
 
 export function getUnitLabel(unit) {
   return PRODUCT_UNIT_INDEX[unit] ? PRODUCT_UNIT_INDEX[unit].label : unit;
+}
+
+// Selling units a VENDOR may set on their store products. These are the only
+// three supported across the app (catalogue browsing outside a vendor store
+// may still show the wider master set above).
+export const VENDOR_UNIT_OPTIONS = [
+  { code: 'piece', label: 'Piece' },
+  { code: 'kg', label: 'Kg' },
+  { code: 'bunch', label: 'Bunch' },
+];
+
+export const VENDOR_SELLING_UNITS = VENDOR_UNIT_OPTIONS.map((option) => option.code);
+
+export function isAllowedSellingUnit(unit) {
+  return VENDOR_SELLING_UNITS.includes(unit);
+}
+
+// Short, lowercase suffix for price displays: "KES 80 / piece", "/ kg", "/ bunch".
+const UNIT_SHORT_LABELS = {
+  kg: 'kg',
+  piece: 'piece',
+  bunch: 'bunch',
+};
+
+export function getUnitShortLabel(unit) {
+  return UNIT_SHORT_LABELS[unit] || (unit && String(unit).toLowerCase()) || 'kg';
+}
+
+// Quantity phrasing: "2 pieces", "1 bunch", "3 kg".
+const UNIT_QUANTITY_FORMS = {
+  kg: { singular: 'kg', plural: 'kg' },
+  piece: { singular: 'piece', plural: 'pieces' },
+  bunch: { singular: 'bunch', plural: 'bunches' },
+};
+
+export function formatUnitQuantity(quantity, unit) {
+  const n = Number.isFinite(Number(quantity)) ? Number(quantity) : 1;
+  const forms = UNIT_QUANTITY_FORMS[unit] || UNIT_QUANTITY_FORMS.kg;
+  return `${n} ${n === 1 ? forms.singular : forms.plural}`;
 }
 
 const PRODUCT_INDEX = Object.fromEntries(

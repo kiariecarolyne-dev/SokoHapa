@@ -7,10 +7,11 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
 import { addCustomProductToStore, addMasterProductToStore } from '../../services/productService';
 import {
-  PRODUCT_UNIT_OPTIONS,
+  VENDOR_UNIT_OPTIONS,
   getActiveCategories,
   getMasterProductById,
   getUnitLabel,
+  isAllowedSellingUnit,
   resolveProductImage,
 } from '../../utils/productCatalogue';
 import { categories, addProductToVendorStore } from '../../services/mockData';
@@ -30,15 +31,15 @@ export default function AddProductScreen({ navigation, route }) {
   const master = masterProductId ? getMasterProductById(masterProductId) : null;
 
   const categoryOptions = TEST_MODE ? categories : getActiveCategories().map((c) => c.categoryName);
-  const unitOptions = master
-    ? master.availableUnits
-    : PRODUCT_UNIT_OPTIONS.map((option) => option.code);
+  const unitOptions = VENDOR_UNIT_OPTIONS.map((option) => option.code);
 
   const [name, setName] = useState(master ? master.displayName : '');
   const [category, setCategory] = useState(master ? master.categoryName : (categoryOptions[0] ?? 'Other'));
   const [priceText, setPriceText] = useState('');
   const [quantityText, setQuantityText] = useState('');
-  const [unit, setUnit] = useState(master ? master.defaultUnit : 'kg');
+  const [unit, setUnit] = useState(
+    master && isAllowedSellingUnit(master.defaultUnit) ? master.defaultUnit : 'kg'
+  );
   const [available, setAvailable] = useState(true);
   const [imageSelected, setImageSelected] = useState(false);
 
@@ -78,6 +79,11 @@ export default function AddProductScreen({ navigation, route }) {
       quantity < 0
     ) {
       Alert.alert('Missing details', 'Please enter a valid price and available quantity.');
+      return;
+    }
+
+    if (!isAllowedSellingUnit(unit)) {
+      Alert.alert('Choose a unit', 'Please select a valid selling unit (Piece, Kg or Bunch).');
       return;
     }
 
@@ -244,6 +250,9 @@ export default function AddProductScreen({ navigation, route }) {
               );
             })}
           </View>
+          <Text style={styles.unitHint}>
+            Set the price for ONE {getUnitLabel(unit)} — e.g. KES 80 / piece.
+          </Text>
 
           <View style={styles.spacer} />
 
@@ -339,6 +348,10 @@ const styles = StyleSheet.create({
   chipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  unitHint: {
+    ...typography.bodySmall,
+    marginTop: spacing.sm,
   },
   spacer: {
     height: spacing.md,

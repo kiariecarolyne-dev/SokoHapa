@@ -15,7 +15,7 @@
 // sub-collection but with `isCustom: true`, `masterProductId: null` and a
 // vendor-provided image/name. They never overwrite the master catalogue.
 
-import { getUnitLabel } from './productCatalogue';
+import { getUnitLabel, isAllowedSellingUnit } from './productCatalogue';
 
 export const STORES_COLLECTION = 'stores';
 export const MASTER_PRODUCTS_COLLECTION = 'products';
@@ -33,7 +33,9 @@ export function storeProductDocPath(storeId, productId) {
 }
 
 // Builds the record saved at stores/{storeId}/products/{masterProductId}.
-// `unit` must be one of the master product's `availableUnits`.
+// `unit` must be one of the vendor selling units (piece, kg or bunch) and is
+// independent of the master product's own `availableUnits`: a vendor may sell
+// cabbage per piece while another sells the same cabbage per kg.
 export function buildVendorProductRecord({
   storeId,
   masterProduct,
@@ -51,12 +53,13 @@ export function buildVendorProductRecord({
   if (typeof price !== 'number' || price < 0) {
     throw new Error('buildVendorProductRecord: price must be a non-negative number');
   }
-  if (unit && !masterProduct.availableUnits.includes(unit)) {
+  if (unit != null && !isAllowedSellingUnit(unit)) {
     throw new Error(
-      `buildVendorProductRecord: unit "${unit}" is not allowed for ${masterProduct.productId}`
+      `buildVendorProductRecord: unit "${unit}" is not an allowed selling unit`
     );
   }
-  const resolvedUnit = unit || masterProduct.defaultUnit;
+  const resolvedUnit =
+    unit != null ? unit : isAllowedSellingUnit(masterProduct.defaultUnit) ? masterProduct.defaultUnit : 'kg';
   return {
     productId: masterProduct.productId,
     masterProductId: masterProduct.productId,
@@ -98,6 +101,12 @@ export function buildCustomProductRecord({
   if (typeof price !== 'number' || price < 0) {
     throw new Error('buildCustomProductRecord: price must be a non-negative number');
   }
+  if (unit != null && !isAllowedSellingUnit(unit)) {
+    throw new Error(
+      `buildCustomProductRecord: unit "${unit}" is not an allowed selling unit`
+    );
+  }
+  const resolvedUnit = unit ?? 'kg';
   return {
     productId,
     masterProductId: null,
@@ -107,8 +116,8 @@ export function buildCustomProductRecord({
     displayName: nameSwahili ? `${nameEnglish} (${nameSwahili})` : nameEnglish,
     image,
     price,
-    unit,
-    unitLabel: getUnitLabel(unit),
+    unit: resolvedUnit,
+    unitLabel: getUnitLabel(resolvedUnit),
     isAvailable,
     isCustom: true,
     createdAt: now,

@@ -414,6 +414,7 @@ service cloud.firestore {
       allow create: if isStoreOwner(storeId) &&
         request.resource.data.storeId == storeId &&
         request.resource.data.productId == productId &&
+        request.resource.data.unit in ['piece', 'kg', 'bunch'] &&
         request.resource.data.price is number &&
         request.resource.data.price >= 0 &&
         (
@@ -448,6 +449,11 @@ service cloud.firestore {
           'category',
           'updatedAt'
         ]) &&
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['unit']) == false ||
+          request.resource.data.unit in ['piece', 'kg', 'bunch']
+        ) &&
         (
           request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['price', 'pricePerKg']) == false ||
@@ -1100,6 +1106,58 @@ service cloud.firestore {
               parcelStatusRank(resource.data.parcelStatus)
           )
         );
+    }
+
+    // ============================================================
+    // PUSH NOTIFICATION TOKENS
+    // ============================================================
+    // Each signed-in user stores their own device Expo push tokens under
+    // pushTokens/{uid}/tokens/{deviceId}. The mobile app writes these only for
+    // its own UID; the Cloud Functions (the actual push senders) read them
+    // with the admin SDK, which bypasses these rules. No user can ever read or
+    // write another user's token records.
+
+    match /pushTokens/{uid} {
+
+      // The parent document contains no data; nothing is granted on it.
+      allow get, list: if false;
+      allow create, update, delete: if false;
+
+      match /tokens/{deviceId} {
+
+        allow get, list: if isSignedIn() &&
+          uid == currentUid();
+
+        allow create: if isSignedIn() &&
+          uid == currentUid() &&
+          request.resource.data.uid == uid &&
+          request.resource.data.token is string &&
+          request.resource.data.token.size() > 0 &&
+          request.resource.data.enabled == true;
+
+        allow update: if isSignedIn() &&
+          uid == currentUid() &&
+          resource.data != null &&
+          resource.data.uid == uid &&
+          request.resource.data.uid == uid &&
+          request.resource.data.token is string &&
+          request.resource.data.token.size() > 0;
+
+        allow delete: if isSignedIn() &&
+          uid == currentUid();
+      }
+    }
+
+    // ============================================================
+    // NOTIFICATION EVENTS (server-side idempotency guards)
+    // ============================================================
+    // Created only by Cloud Functions with the admin SDK (which bypasses
+    // these rules) so a single state transition can never double-notify.
+    // Clients must never read, list, write or delete these documents.
+
+    match /notificationEvents/{eventId} {
+      allow get, list: if false;
+      allow create, update, delete: if false;
     }
   }
 }

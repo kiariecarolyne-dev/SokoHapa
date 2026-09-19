@@ -15,6 +15,17 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyC-zwcOlxyg8DilPCfBP7HlMCRTmbglmuM",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "sokohapa-20744.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "sokohapa-20744",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "sokohapa-20744.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "906126520500",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:906126520500:web:ad9fcff0b01c191847a7e1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fmkhrsjsaelvertrqcwu.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_cHQaxDFE0JQIXA8xwXBPdw_1XYeq6Sf",
+        "EXPO_PUBLIC_BACKEND_URL": "https://sokohapa-backend.onrender.com"
       }
     },
     "production": {

@@ -3,7 +3,7 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing, typography } from '../utils/theme';
 import ImagePlaceholder from './ImagePlaceholder';
-import { getMasterProductById, resolveProductImage } from '../utils/productCatalogue';
+import { getMasterProductById, formatUnitQuantity, getUnitShortLabel, resolveProductImage } from '../utils/productCatalogue';
 import { formatKES } from '../utils/format';
 
 export default function ProductCard({ product, onAddToCart }) {
@@ -27,7 +27,7 @@ export default function ProductCard({ product, onAddToCart }) {
       <View style={styles.body}>
         <View style={styles.titleRow}>
           <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
-          <Text style={styles.price}>{formatKES(product.pricePerKg)} / kg</Text>
+          <Text style={styles.price}>{formatKES(product.pricePerKg)} / {getUnitShortLabel(product.unit)}</Text>
         </View>
         {masterProduct ? (
           <Text style={styles.swahili} numberOfLines={1}>{masterProduct.nameSwahili}</Text>
@@ -35,7 +35,7 @@ export default function ProductCard({ product, onAddToCart }) {
         <View style={styles.metaRow}>
           <Text style={styles.category} numberOfLines={1}>{product.category}</Text>
           <Text style={[styles.availability, unavailable && styles.availabilityOff]} numberOfLines={1}>
-            {unavailable ? 'Currently unavailable' : `${product.availableQuantity} kg available`}
+            {unavailable ? 'Currently unavailable' : `${formatUnitQuantity(product.availableQuantity, product.unit)} available`}
           </Text>
         </View>
 
@@ -49,7 +49,7 @@ export default function ProductCard({ product, onAddToCart }) {
             >
               <Ionicons name="remove" size={16} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.stepValue}>{quantity} kg</Text>
+            <Text style={styles.stepValue}>{formatUnitQuantity(quantity, product.unit)}</Text>
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={increment}

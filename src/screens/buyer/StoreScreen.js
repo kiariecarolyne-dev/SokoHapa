@@ -11,6 +11,7 @@ import { onStoreProducts } from '../../services/productService';
 import { getStoreById as getMockStoreById } from '../../services/mockData';
 import { isStoreTemporarilyUnavailable, onStore } from '../../services/storeService';
 import { TEST_MODE } from '../../utils/testMode';
+import { formatUnitQuantity } from '../../utils/productCatalogue';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 
 export default function StoreScreen({ navigation, route }) {
@@ -98,7 +99,7 @@ export default function StoreScreen({ navigation, route }) {
     addItem(product, quantity, store);
     Alert.alert(
       'Added to Cart',
-      `${quantity} kg of ${product.name} added to your cart.`
+      `${formatUnitQuantity(quantity, product.unit)} of ${product.name} added to your cart.`
     );
   };
 

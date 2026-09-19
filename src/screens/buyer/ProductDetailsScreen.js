@@ -8,7 +8,7 @@ import { getProductById as getMockProductById } from '../../services/mockData';
 import { getProductById as getStoreProductById } from '../../services/productService';
 import { getStoreById as getRealStoreById } from '../../services/storeService';
 import { TEST_MODE } from '../../utils/testMode';
-import { getMasterProductById, resolveProductImage } from '../../utils/productCatalogue';
+import { getMasterProductById, formatUnitQuantity, getUnitShortLabel, resolveProductImage } from '../../utils/productCatalogue';
 import { colors, radius, shadow, spacing, typography } from '../../utils/theme';
 import { formatKES } from '../../utils/format';
 
@@ -77,7 +77,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
     addItem(product, quantity, store);
     Alert.alert(
       'Added to Cart',
-      `${quantity} kg of ${product.name} added to your cart.`
+      `${formatUnitQuantity(quantity, product.unit)} of ${product.name} added to your cart.`
     );
     navigation.goBack();
   };
@@ -96,7 +96,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
           <Text style={styles.store} onPress={() => navigation.navigate('Store', { storeId: store.id })}>
             {store.name}
           </Text>
-          <Text style={styles.price}>{formatKES(product.pricePerKg)} / kg</Text>
+          <Text style={styles.price}>{formatKES(product.pricePerKg)} / {getUnitShortLabel(product.unit)}</Text>
 
           <View style={styles.availabilityCard}>
             <Ionicons
@@ -107,7 +107,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
             <Text style={[styles.availabilityText, { color: unavailable ? colors.danger : colors.success }]}>
               {unavailable
                 ? 'Currently unavailable'
-                : `${product.availableQuantity} kg available`}
+                : `${formatUnitQuantity(product.availableQuantity, product.unit)} available`}
             </Text>
           </View>
 
@@ -124,7 +124,7 @@ export default function ProductDetailsScreen({ navigation, route }) {
             >
               <Ionicons name="remove" size={20} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.stepValue}>{quantity} kg</Text>
+            <Text style={styles.stepValue}>{formatUnitQuantity(quantity, product.unit)}</Text>
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() =>

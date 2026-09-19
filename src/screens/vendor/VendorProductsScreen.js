@@ -6,7 +6,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { MASTER_PRODUCTS } from '../../services/masterProducts';
 import { onStoreProducts } from '../../services/productService';
-import { getActiveCategories, getMasterProductById, getUnitLabel, resolveProductImage } from '../../utils/productCatalogue';
+import { getActiveCategories, getMasterProductById, getUnitLabel, getUnitShortLabel, resolveProductImage } from '../../utils/productCatalogue';
 import { getStoreById } from '../../services/mockData';
 import { ensureVendorStore } from '../../services/storeService';
 import { TEST_MODE, vendorCanManageStore } from '../../utils/testMode';
@@ -116,7 +116,7 @@ export default function VendorProductsScreen({ navigation }) {
         <View style={styles.body}>
           <Text style={styles.name}>{item.name}</Text>
           <Text style={styles.category}>{item.category}</Text>
-          <Text style={styles.price}>{formatKES(item.pricePerKg)} / kg</Text>
+          <Text style={styles.price}>{formatKES(item.pricePerKg)} / {getUnitShortLabel(item.unit)}</Text>
         </View>
         <View style={styles.right}>
           <StatusBadge label={status} />
